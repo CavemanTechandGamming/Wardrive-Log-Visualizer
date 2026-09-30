@@ -18,8 +18,11 @@ Desktop tool to **ingest wardrive logs**, **merge them into one combined log**, 
 - **Plot map** from logged GPS coordinates only (no Google Maps, no street tiles, no satellite basemap)
 - **Zoom** (scroll), **pan** (drag), **click** a point for its fields; **Previous** / **Next** or arrow keys walk the log
 - **Drop** CSVs on the left square (or use **Add logs**); per-file on/off toggles
+- **Legend filters** — click WIFI / BLE / LTE / NR to hide or show that type (gray when off); Save still keeps every row
 - **Save combined CSV** with a suggested name from the earliest and latest FirstSeen (`Wardrive Log Wednesday September 30th 2026.csv`, or a start–end span across calendar days)
 - **Unique vs samples** on the legend, file list, and status (unique = distinct MAC+Type; samples = every row)
+- **Settings** (General · WiGLE · WDGWars · About) for API keys, raw/combined folders, and open/clear the activity log — stored in local `settings.xml`
+- **Activity log** — plain-English `logs/activity.log` beside the app install
 
 Alpha `0.0.1` — run from source until packaged releases exist.
 
@@ -45,8 +48,9 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 1. **Drop** a CSV onto the square on the left, or use **Add logs**. Loaded files appear under the square. Toggle a file off to hide it from the map without removing it; toggle it back on to load it again.
 2. The app **merges** the files that are on, keeps every logged row, and stitches them by **FirstSeen**. Points are drawn from those coordinates. Adding another log refits the map around everything loaded so far.
-3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the log from there. **Fit** frames every point again.
+3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the visible log. **Fit** frames every point again. Click a type in the legend (**WIFI**, **BLE**, **LTE**, **NR**) to hide or show it — gray means off.
 4. **Save combined CSV** when you want a file WiGLE or WDGWars can take. Rename in the dialog if you want.
+5. **Settings** holds keys and folders for later upload/batch work, plus open/clear for the activity log.
 
 ---
 
@@ -57,6 +61,7 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 - Counts match the CSV. An on-device app may show a higher “seen” total if it filters personal devices from the export.
 - If a file fails to parse, the status line names it. The logs that loaded stay on the map.
 - Drag-and-drop needs `tkinterdnd2` (installed by `scripts/setup_env`). **Add logs** works without it.
+- Local files next to the app (not on GitHub): `settings.xml`, `logs/activity.log`.
 
 ---
 

@@ -10,6 +10,7 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from src import APP_NAME, __version__
+from src.core.activity_log import log_activity
 from src.core.plot import (
     MapSpace,
     MapView,
@@ -19,6 +20,7 @@ from src.core.plot import (
     screen_marks,
     zoom_view,
 )
+from src.core.settings import load_settings
 from src.core.wigle_csv import (
     Observation,
     WigleCsvError,
@@ -30,6 +32,7 @@ from src.core.wigle_csv import (
     read_wigle_csv,
     write_wigle_csv,
 )
+from src.ui.settings_window import SettingsWindow
 
 MAP_BG = "#141414"
 TYPE_COLORS = {
@@ -39,6 +42,7 @@ TYPE_COLORS = {
     "NR": "#c39bd3",
 }
 DEFAULT_COLOR = "#b0b0b0"
+LEGEND_OFF_COLOR = "#6a6a6a"
 HIT_RADIUS = 12
 DRAG_THRESHOLD = 4
 LEFT_WIDTH = 240
@@ -72,6 +76,11 @@ class MapApp:
         self._selected: int | None = None
         self._file_rows: list[ctk.CTkFrame] = []
         self._legend_labels: dict[str, ctk.CTkLabel] = {}
+        self._type_enabled: dict[str, bool] = {
+            name: True for name in TYPE_COLORS
+        }
+        self.settings = load_settings()
+        self._settings_window: SettingsWindow | None = None
 
         root.title(f"{APP_NAME} {__version__}")
         root.geometry("1200x700")
@@ -85,7 +94,9 @@ class MapApp:
             bar, text="Save combined CSV", command=self.save_combined
         ).pack(side="left", padx=(8, 0))
         ctk.CTkButton(bar, text="Fit", command=self.fit).pack(side="left", padx=(8, 0))
-
+        ctk.CTkButton(bar, text="Settings", command=self.open_settings).pack(
+            side="left", padx=(8, 0)
+        )
         self.status = ctk.CTkLabel(
             bar, text="Drop a log on the left square, or use Add logs."
         )
@@ -95,9 +106,13 @@ class MapApp:
         legend.pack(fill="x", padx=16, pady=(0, 8))
         for name, color in TYPE_COLORS.items():
             label = ctk.CTkLabel(
-                legend, text=f"{name} · 0 unique · 0 samples", text_color=color
+                legend,
+                text=f"{name} · 0 unique · 0 samples",
+                text_color=color,
+                cursor="hand2",
             )
             label.pack(side="left", padx=(0, 16))
+            label.bind("<Button-1>", lambda _event, t=name: self._toggle_type(t))
             self._legend_labels[name] = label
         self._refresh_counts(None)
 
@@ -187,6 +202,21 @@ class MapApp:
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self._last_size = (0, 0)
         self._wheel_bound = False
+        log_activity(f"Started {APP_NAME} {__version__}.")
+
+    def open_settings(self) -> None:
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            self._settings_window.lift()
+            self._settings_window.focus_force()
+            return
+        window = SettingsWindow(self.root)
+
+        def _closed(_event: object = None) -> None:
+            self.settings = load_settings()
+            self._settings_window = None
+
+        window.bind("<Destroy>", _closed)
+        self._settings_window = window
 
     def add_files(self) -> None:
         selected = filedialog.askopenfilenames(
@@ -215,6 +245,7 @@ class MapApp:
                 log = read_wigle_csv(path)
             except (OSError, WigleCsvError) as exc:
                 error = f"Could not read {Path(path).name}: {exc}"
+                log_activity(error)
                 break
             file_path = Path(path)
             self.entries.append(
@@ -225,7 +256,11 @@ class MapApp:
                     enabled=True,
                 )
             )
+            counts = count_observations(log.observations)
+            log_activity(f"Loaded {file_path.name} ({counts.label()}).")
             loaded += 1
+        if skipped:
+            log_activity(f"Skipped {skipped} non-CSV drop(s).")
         self._rebuild_file_list()
         self._selected = None
         self.position.configure(text="")
@@ -277,15 +312,33 @@ class MapApp:
         for name, label in self._legend_labels.items():
             summary = by_type.get(name)
             if summary is None:
-                label.configure(text=f"{name} · 0 unique · 0 samples")
+                text = f"{name} · 0 unique · 0 samples"
             else:
-                label.configure(text=f"{name} · {summary.label()}")
+                text = f"{name} · {summary.label()}"
+            on = self._type_enabled.get(name, True)
+            color = TYPE_COLORS[name] if on else LEGEND_OFF_COLOR
+            label.configure(text=text, text_color=color)
+
+    def _toggle_type(self, obs_type: str) -> None:
+        if obs_type not in self._type_enabled:
+            return
+        self._type_enabled[obs_type] = not self._type_enabled[obs_type]
+        state = "on" if self._type_enabled[obs_type] else "off"
+        log_activity(f"Turned {state} {obs_type} on the plot.")
+        self._selected = None
+        self.position.configure(text="")
+        self._set_detail(
+            "Click a point. Previous, Next, or the arrow keys move through the log."
+        )
+        self.redraw()
 
     def _toggle_entry(self, index: int) -> None:
         if index < 0 or index >= len(self.entries):
             return
         entry = self.entries[index]
         entry.enabled = not entry.enabled
+        state = "on" if entry.enabled else "off"
+        log_activity(f"Turned {state} {entry.name}.")
         self._selected = None
         self.position.configure(text="")
         self._set_detail(
@@ -323,6 +376,7 @@ class MapApp:
         log = self.combined()
         if log is None:
             self.status.configure(text="Turn on at least one log before saving.")
+            log_activity("Save combined CSV — nothing to save (no logs on).")
             return
         path = filedialog.asksaveasfilename(
             parent=self.root,
@@ -332,6 +386,7 @@ class MapApp:
             initialfile=default_combined_csv_name(log),
         )
         if not path:
+            log_activity("Save combined CSV — cancelled.")
             return
         write_wigle_csv(path, log)
         counts = count_observations(log.observations)
@@ -339,6 +394,9 @@ class MapApp:
             text=(
                 f"Saved {counts.label()} to {Path(path).name}"
             )
+        )
+        log_activity(
+            f"Saved {Path(path).name} ({counts.label()})."
         )
 
     def fit(self) -> None:
@@ -354,6 +412,16 @@ class MapApp:
         if not logs:
             return None
         return merge_logs(logs)
+
+    def visible_observations(
+        self, log: WigleLog
+    ) -> tuple[Observation, ...]:
+        """Rows drawn and walked on the plot (legend type filters)."""
+        return tuple(
+            row
+            for row in log.observations
+            if self._type_enabled.get(row.obs_type, True)
+        )
 
     def zoom_at_pixel(self, x: float, y: float, delta: int) -> None:
         if self.view is None or delta == 0 or not self._observations:
@@ -387,13 +455,32 @@ class MapApp:
         if width < 2 or height < 2:
             return
 
-        space = MapSpace.from_observations(log.observations)
+        self._refresh_counts(log)
+        visible = self.visible_observations(log)
+        if not visible:
+            self._space = None
+            self._observations = ()
+            self._marks = []
+            if width >= 2 and height >= 2:
+                self.canvas.create_text(
+                    width / 2,
+                    height / 2,
+                    text="All types are off. Click WIFI, BLE, LTE, or NR in the legend.",
+                    fill="#8a8a8a",
+                    font=("Segoe UI", 14),
+                )
+            self.status.configure(
+                text="All types are off. Click WIFI, BLE, LTE, or NR to show them."
+            )
+            return
+
+        space = MapSpace.from_observations(visible)
         fitted = fit_view(space, width, height)
         self.fit_scale = fitted.scale
         if self.view is None or not self._user_moved:
             self.view = fitted
         self._space = space
-        self._observations = log.observations
+        self._observations = visible
         self._marks = screen_marks(space, self.view)
         for index, (x, y, obs_type) in enumerate(self._marks):
             color = TYPE_COLORS.get(obs_type, DEFAULT_COLOR)
@@ -402,8 +489,7 @@ class MapApp:
                 self.canvas.create_oval(
                     x - 6, y - 6, x + 6, y + 6, outline="#f2f2f2", width=1
                 )
-        self._refresh_counts(log)
-        counts = count_observations(log.observations)
+        counts = count_observations(visible)
         files_word = "file" if active == 1 else "files"
         self.status.configure(
             text=(

@@ -44,3 +44,6 @@ RELEASE_BODY.md
 
 # Local scratchpad / future ideas (not for GitHub).
 LOCAL_NOTES.md
+
+# Local settings (may contain API keys — never commit)
+settings.xml
