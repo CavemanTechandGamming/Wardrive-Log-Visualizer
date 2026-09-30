@@ -1,0 +1,46 @@
+# =============================================================================
+# Paths listed below stay on your machine (or CI artifacts). They are NOT
+# uploaded to GitHub when you push.
+#
+# This .gitignore file itself SHOULD be committed — that is normal and expected.
+# =============================================================================
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments (local only — never commit)
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local wardrive / test data (never commit real captures)
+*.csv
+*.log
+data/
+logs/
+
+# Local tests and fixtures (stay on the machine — not for GitHub)
+tests/
+sample/
+
+# PyInstaller (local only — publish via Actions artifacts if needed)
+build/
+dist/
+*.spec
+
+# Local draft for pasting into the GitHub Release description (Markdown).
+RELEASE_BODY.md
+
+# Local scratchpad / future ideas (not for GitHub).
+LOCAL_NOTES.md
