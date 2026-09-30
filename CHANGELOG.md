@@ -9,15 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Human-readable activity log at `logs/activity.log` beside the app install (start, load, toggle, save, read errors).
-- Click WIFI / BLE / LTE / NR in the legend to hide or show that type on the plot (gray when off). Save combined still keeps every row.
-- Settings window (tabs: **General** · **WiGLE** · **WDGWars** · **About**): keys, raw/combined folders, open/clear activity log, app info. Saved as local `settings.xml` (gitignored).
-
 ### Changed
 
 ### Fixed
 
 ### Removed
+
+## [0.0.2] - 2026-09-30
+
+### Added
+
+- Human-readable activity log at `logs/activity.log` beside the app install (start, load, toggle, remove, save, read errors).
+- Click WIFI / BLE / LTE / NR in the legend to hide or show that type on the plot (gray when off). Save combined still keeps every row.
+- Settings window (tabs: **General** · **WiGLE** · **WDGWars** · **About**): keys, raw/combined folders, open/clear activity log, app info. Saved as local `settings.xml` (gitignored).
+- **×** on each loaded-file row removes that log from the list (toggle still only hides it).
+- App icon under `assets/` (window, portable exe, and Setup).
+- Local build scripts and GitHub Actions workflows for multi-platform **Build** and **Build and Release**.
 
 ## [0.0.1] - 2026-09-30
 

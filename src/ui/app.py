@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,10 +82,13 @@ class MapApp:
         }
         self.settings = load_settings()
         self._settings_window: SettingsWindow | None = None
+        self._tk_icon = None
 
         root.title(f"{APP_NAME} {__version__}")
         root.geometry("1200x700")
         root.minsize(900, 520)
+        self._set_window_icon()
+        root.after(0, self._set_window_icon)
 
         bar = ctk.CTkFrame(root, fg_color="transparent")
         bar.pack(fill="x", padx=16, pady=(16, 8))
@@ -204,6 +208,47 @@ class MapApp:
         self._wheel_bound = False
         log_activity(f"Started {APP_NAME} {__version__}.")
 
+    def _asset_path(self, *parts: str) -> Path:
+        """Resolve an asset under ``assets/`` (dev) or PyInstaller ``_MEIPASS``."""
+
+        if hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS).joinpath(*parts)  # type: ignore[attr-defined]
+        repo_root = Path(__file__).resolve().parents[2]
+        return repo_root.joinpath("assets", *parts)
+
+    def _set_window_icon(self) -> None:
+        """Set the window/taskbar icon (best-effort)."""
+
+        ico_path = self._asset_path("WardriveLogVisualizer.ico")
+        png_path = self._asset_path("wardrive-log-visualizer-icon-256.png")
+        if not png_path.exists():
+            png_path = self._asset_path("wardrive-log-visualizer-icon.png")
+
+        if sys.platform == "win32" and ico_path.exists():
+            try:
+                self.root.iconbitmap(default=str(ico_path.resolve()))
+            except Exception:
+                try:
+                    self.root.iconbitmap(str(ico_path.resolve()))
+                except Exception:
+                    pass
+
+        if not png_path.exists():
+            return
+        try:
+            from PIL import Image, ImageTk
+        except Exception:
+            return
+        try:
+            img = Image.open(png_path).convert("RGBA")
+            if img.size != (256, 256):
+                img = img.resize((256, 256), Image.Resampling.LANCZOS)
+            tk_img = ImageTk.PhotoImage(img)
+            self.root.iconphoto(True, tk_img)
+            self._tk_icon = tk_img
+        except Exception:
+            return
+
     def open_settings(self) -> None:
         if self._settings_window is not None and self._settings_window.winfo_exists():
             self._settings_window.lift()
@@ -286,6 +331,17 @@ class MapApp:
         for index, entry in enumerate(self.entries):
             row = ctk.CTkFrame(self.file_list, fg_color="transparent")
             row.pack(fill="x", pady=2)
+            remove = ctk.CTkButton(
+                row,
+                text="×",
+                width=28,
+                height=28,
+                fg_color="transparent",
+                hover_color=("#d0d0d0", "#3a3a3a"),
+                text_color=("#666666", "#aaaaaa"),
+                command=lambda i=index: self._remove_entry(i),
+            )
+            remove.pack(side="right", padx=(4, 0))
             switch = ctk.CTkSwitch(
                 row,
                 text="",
@@ -302,7 +358,7 @@ class MapApp:
                 text=f"{entry.name}\n{count_observations(entry.log.observations).label()}",
                 anchor="w",
                 justify="left",
-                wraplength=LEFT_WIDTH - 60,
+                wraplength=LEFT_WIDTH - 88,
             )
             label.pack(side="left", fill="x", expand=True)
             self._file_rows.append(row)
@@ -339,6 +395,20 @@ class MapApp:
         entry.enabled = not entry.enabled
         state = "on" if entry.enabled else "off"
         log_activity(f"Turned {state} {entry.name}.")
+        self._selected = None
+        self.position.configure(text="")
+        self._set_detail(
+            "Click a point. Previous, Next, or the arrow keys move through the log."
+        )
+        self.fit()
+
+    def _remove_entry(self, index: int) -> None:
+        if index < 0 or index >= len(self.entries):
+            return
+        name = self.entries[index].name
+        del self.entries[index]
+        log_activity(f"Removed {name}.")
+        self._rebuild_file_list()
         self._selected = None
         self.position.configure(text="")
         self._set_detail(

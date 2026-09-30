@@ -11,6 +11,9 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments (local only — never commit)
 .venv/
@@ -23,6 +26,12 @@ env/
 *.swp
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Secrets / local env (never commit)
+.env
+.env.*
+*.pem
 
 # Local wardrive / test data (never commit real captures)
 *.csv

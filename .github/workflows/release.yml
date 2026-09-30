@@ -1,0 +1,207 @@
+# =============================================================================
+# Wardrive Log Visualizer — build all platforms, then publish a GitHub Release
+# Trigger: Actions → Build and Release → Run workflow
+#
+# Version tag/assets come from src/__init__.py (__version__).
+# Bump that value before running this workflow.
+#
+# Release assets:
+#   WardriveLogVisualizer-0.0.2-windows-portable.zip
+#   WardriveLogVisualizer-0.0.2-windows-setup.exe
+#   WardriveLogVisualizer-0.0.2-mac-apple-silicon.tar.gz
+#   WardriveLogVisualizer-0.0.2-mac-intel.tar.gz
+#   WardriveLogVisualizer-0.0.2-ubuntu.tar.gz
+# =============================================================================
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: "Python version"
+        required: false
+        default: "3.14"
+        type: string
+      draft:
+        description: "Create as draft release"
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    with:
+      python_version: ${{ inputs.python_version }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION="$(python3 scripts/read_version.py)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "App version: ${VERSION}"
+
+      - name: Ensure release tag does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release ${TAG} already exists. Bump __version__ in src/__init__.py and re-run."
+            exit 1
+          fi
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: wardrive-log-visualizer-*
+          path: artifacts
+
+      - name: Package versioned release assets
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p release-assets
+          shopt -s nullglob
+
+          for dir in artifacts/wardrive-log-visualizer-*; do
+            [[ -d "$dir" ]] || continue
+            name="$(basename "$dir")"
+
+            if [[ "$name" =~ ^wardrive-log-visualizer-windows-(.+)-portable$ ]]; then
+              art_version="${BASH_REMATCH[1]}"
+              if [[ "$art_version" != "$VERSION" ]]; then
+                echo "::error::Artifact version ${art_version} does not match src __version__ ${VERSION}"
+                exit 1
+              fi
+              zip_name="WardriveLogVisualizer-${VERSION}-windows-portable.zip"
+              (cd "$dir" && zip -r -9 "$GITHUB_WORKSPACE/release-assets/${zip_name}" .)
+              echo "Created ${zip_name}"
+
+            elif [[ "$name" =~ ^wardrive-log-visualizer-windows-(.+)-setup$ ]]; then
+              art_version="${BASH_REMATCH[1]}"
+              if [[ "$art_version" != "$VERSION" ]]; then
+                echo "::error::Artifact version ${art_version} does not match src __version__ ${VERSION}"
+                exit 1
+              fi
+              setup_src="$(find "$dir" -type f -name '*-windows-setup.exe' | head -n 1)"
+              if [[ -z "$setup_src" ]]; then
+                echo "::error::No windows-setup.exe found in ${name}"
+                exit 1
+              fi
+              setup_name="WardriveLogVisualizer-${VERSION}-windows-setup.exe"
+              cp -f "$setup_src" "$GITHUB_WORKSPACE/release-assets/${setup_name}"
+              echo "Created ${setup_name}"
+
+            elif [[ "$name" =~ ^wardrive-log-visualizer-(mac-apple-silicon|mac-intel|ubuntu|debian|mint|fedora|arch)-(.+)$ ]]; then
+              platform="${BASH_REMATCH[1]}"
+              art_version="${BASH_REMATCH[2]}"
+              if [[ "$art_version" != "$VERSION" ]]; then
+                echo "::error::Artifact version ${art_version} does not match src __version__ ${VERSION}"
+                exit 1
+              fi
+
+              echo "Artifact contents for ${name}:"
+              find "$dir" -type f -printf '  %12s  %p\n' | sort -nr || find "$dir" -type f -exec ls -la {} \;
+
+              app_bundle="$(find "$dir" -type d -name '*.app' | head -n 1 || true)"
+              if [[ -n "$app_bundle" ]]; then
+                bundle_size="$(du -sb "$app_bundle" | awk '{print $1}')"
+                if [[ "$bundle_size" -lt 5000000 ]]; then
+                  echo "::error::macOS .app in ${name} is only ${bundle_size} bytes (expected multi-MB build)"
+                  exit 1
+                fi
+                tar_name="WardriveLogVisualizer-${VERSION}-${platform}.tar.gz"
+                tar -C "$(dirname "$app_bundle")" -czf "$GITHUB_WORKSPACE/release-assets/${tar_name}" "$(basename "$app_bundle")"
+                echo "Created ${tar_name} from $(basename "$app_bundle") (${bundle_size} bytes)"
+              else
+                binary="$(
+                  find "$dir" -type f \( -name 'WardriveLogVisualizer-*' -o -name 'WardriveLogVisualizer' \) \
+                    ! -name '*.spec' ! -name '*.toc' ! -name '*.pyz' \
+                    -printf '%s\t%p\n' 2>/dev/null \
+                  | sort -nr \
+                  | head -n 1 \
+                  | cut -f2-
+                )"
+                if [[ -z "$binary" ]]; then
+                  binary="$(
+                    find "$dir" -type f ! -name '.*' -printf '%s\t%p\n' 2>/dev/null \
+                    | sort -nr \
+                    | head -n 1 \
+                    | cut -f2-
+                  )"
+                fi
+                if [[ -z "$binary" ]]; then
+                  echo "::error::No binary found in ${name}"
+                  exit 1
+                fi
+                size="$(wc -c < "$binary" | tr -d ' ')"
+                if [[ "$size" -lt 5000000 ]]; then
+                  echo "::error::Binary in ${name} is only ${size} bytes (picked: ${binary}). Expected multi-MB PyInstaller build."
+                  exit 1
+                fi
+                chmod +x "$binary"
+                tar_name="WardriveLogVisualizer-${VERSION}-${platform}.tar.gz"
+                tar -C "$(dirname "$binary")" -czf "$GITHUB_WORKSPACE/release-assets/${tar_name}" "$(basename "$binary")"
+                echo "Created ${tar_name} from $(basename "$binary") (${size} bytes)"
+              fi
+
+            else
+              echo "::error::Unexpected artifact name: ${name}"
+              exit 1
+            fi
+          done
+
+          count="$(find release-assets -type f | wc -l)"
+          if [[ "$count" -lt 1 ]]; then
+            echo "::error::No release assets were created."
+            exit 1
+          fi
+
+          echo "Release assets:"
+          ls -lah release-assets
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          EXTRA_FLAGS=()
+          if [[ "${{ inputs.draft }}" == "true" ]]; then
+            EXTRA_FLAGS+=(--draft)
+          fi
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            EXTRA_FLAGS+=(--prerelease)
+          fi
+
+          gh release create "$TAG" \
+            --title "Wardrive Log Visualizer ${VERSION}" \
+            --generate-notes \
+            "${EXTRA_FLAGS[@]}" \
+            release-assets/*

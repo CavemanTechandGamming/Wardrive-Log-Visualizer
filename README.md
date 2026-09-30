@@ -17,20 +17,21 @@ Desktop tool to **ingest wardrive logs**, **merge them into one combined log**, 
 - **Merge** multiple runs into one log — every logged row stays; combined order is by **FirstSeen**
 - **Plot map** from logged GPS coordinates only (no Google Maps, no street tiles, no satellite basemap)
 - **Zoom** (scroll), **pan** (drag), **click** a point for its fields; **Previous** / **Next** or arrow keys walk the log
-- **Drop** CSVs on the left square (or use **Add logs**); per-file on/off toggles
+- **Drop** CSVs on the left square (or use **Add logs**); per-file on/off toggles; **×** removes a file from the list
 - **Legend filters** — click WIFI / BLE / LTE / NR to hide or show that type (gray when off); Save still keeps every row
 - **Save combined CSV** with a suggested name from the earliest and latest FirstSeen (`Wardrive Log Wednesday September 30th 2026.csv`, or a start–end span across calendar days)
 - **Unique vs samples** on the legend, file list, and status (unique = distinct MAC+Type; samples = every row)
 - **Settings** (General · WiGLE · WDGWars · About) for API keys, raw/combined folders, and open/clear the activity log — stored in local `settings.xml`
 - **Activity log** — plain-English `logs/activity.log` beside the app install
+- **Planned:** upload combined CSVs to **WiGLE** and **WDGWars** from the app (keys already live in Settings)
 
-Alpha `0.0.1` — run from source until packaged releases exist.
+Alpha `0.0.2` — run from source until a GitHub Release is published (packaging scripts and Actions are in the repo).
 
 ---
 
 ## Download
 
-Releases are not published yet (alpha `0.0.1`). When they exist:
+Releases are not published yet (alpha `0.0.2`). When they exist:
 
 1. Open this repository’s **[Releases](https://github.com/CavemanTechandGamming/Wardrive-Log-Visualizer/releases)** page.
 2. Download the file for your OS:
@@ -46,7 +47,7 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## How to use
 
-1. **Drop** a CSV onto the square on the left, or use **Add logs**. Loaded files appear under the square. Toggle a file off to hide it from the map without removing it; toggle it back on to load it again.
+1. **Drop** a CSV onto the square on the left, or use **Add logs**. Loaded files appear under the square. Toggle a file off to hide it from the map without removing it; toggle it back on to load it again. **×** on the right drops it from the list entirely.
 2. The app **merges** the files that are on, keeps every logged row, and stitches them by **FirstSeen**. Points are drawn from those coordinates. Adding another log refits the map around everything loaded so far.
 3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the visible log. **Fit** frames every point again. Click a type in the legend (**WIFI**, **BLE**, **LTE**, **NR**) to hide or show it — gray means off.
 4. **Save combined CSV** when you want a file WiGLE or WDGWars can take. Rename in the dialog if you want.

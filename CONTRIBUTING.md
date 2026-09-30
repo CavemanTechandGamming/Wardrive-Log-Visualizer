@@ -16,9 +16,10 @@ Keep the **repository root** reserved for project metadata only:
 | `.gitignore` | Tells Git which **local** files to skip (must list `LOCAL_NOTES.md`) |
 | `docs/images/` | Screenshots and other images for the README |
 | `src/` | Application source code |
-| `scripts/` | Setup / run / build helpers |
+| `scripts/` | Setup / run / build helpers (Windows Inno Setup under `scripts/windows/`) |
 | `requirements/` | Python dependency pins |
-| `packaging/` | Installer definitions — when used |
+| `assets/` | App icons (PNG + Windows `.ico`) |
+| `.github/workflows/` | **Build** and **Build and Release** workflows |
 
 Do **not** add application code, build outputs, or virtualenvs at the root.
 
@@ -53,7 +54,7 @@ Status badges in the README should match the stage of `__version__`.
 1. Bump `__version__` in `src/__init__.py`
 2. Update [CHANGELOG.md](CHANGELOG.md) (move items out of Unreleased)
 3. Commit and push
-4. Run **Build and Release** (when that workflow exists)
+4. Run **Build and Release** (Actions → Build and Release → Run workflow)
 
 Do not hard-code the version in workflows or scripts.
 
@@ -93,7 +94,7 @@ This creates `.venv`, upgrades `pip`, and installs packages from `requirements/r
 
 ## Run from source
 
-Building from source is always free and full-featured (same app as packaged builds, once packaging exists).
+Building from source is always free and full-featured (same app as packaged builds).
 
 **Windows:**
 
@@ -109,7 +110,46 @@ python -m src
 
 ## Build locally
 
-Packaging scripts and GitHub Actions workflows will be added when the first portable build lands. Until then, run from source.
+Version comes from `src/__init__.py`. Windows builds a **portable** onefile binary and a real **Setup.exe** (Inno Setup 6). Linux and Mac default to portable packaged binaries.
+
+| Artifact | Path |
+|----------|------|
+| Windows portable | `dist/windows/X.Y.Z/portable/WardriveLogVisualizer-X.Y.Z.exe` |
+| Windows setup | `dist/windows/X.Y.Z/setup/WardriveLogVisualizer-X.Y.Z-windows-setup.exe` |
+| Mac Apple Silicon | `dist/mac-apple-silicon/X.Y.Z/portable/…` |
+| Mac Intel | `dist/mac-intel/X.Y.Z/portable/…` |
+| Linux distros | `dist/<distro>/X.Y.Z/portable/…` |
+
+**Windows** (needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) on `PATH` or in the usual install locations):
+
+```bat
+scripts\build_app.bat
+```
+
+**Linux / macOS:**
+
+```bash
+chmod +x scripts/setup_env.sh scripts/build_app.sh
+./scripts/setup_env.sh
+./scripts/build_app.sh
+```
+
+Optional: `WARDRIVE_LOG_VISUALIZER_PLATFORM` (folder label) and `WARDRIVE_LOG_VISUALIZER_BUILD_KINDS` (`portable` \| `installer` \| `both`).
+
+### Icons
+
+Committed icons live in [`assets/`](assets/). Rebuild the Windows `.ico` from the master PNG with:
+
+```bat
+python scripts\generate_windows_ico.py --input assets\wardrive-log-visualizer-icon.png --output assets\WardriveLogVisualizer.ico
+```
+
+`scripts/make_placeholder_icon.py` is only a last-resort fallback if the PNG set is missing during a local build.
+
+### GitHub Actions
+
+- **Build** — multi-OS PyInstaller artifacts (manual dispatch)
+- **Build and Release** — same builds, then a GitHub Release tagged `vX.Y.Z` from `__version__`
 
 ## Screenshots
 
