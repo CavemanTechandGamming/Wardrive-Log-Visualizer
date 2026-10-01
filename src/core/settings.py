@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.core.activity_log import install_root
+from src.core.wigle_csv import DEFAULT_MAX_LINES_PER_PART, MIN_MAX_LINES_PER_PART
 
 SETTINGS_FILE_NAME = "settings.xml"
 
@@ -24,6 +25,7 @@ class AppSettings:
     wdgwars_api_key: str = ""
     raw_logs_folder: str = ""
     combined_logs_folder: str = ""
+    max_lines_per_part: int = DEFAULT_MAX_LINES_PER_PART
 
 
 def settings_path() -> Path:
@@ -45,6 +47,9 @@ def load_settings() -> AppSettings:
         wdgwars_api_key=_text(root, "wdgwars/api_key"),
         raw_logs_folder=_text(root, "folders/raw_logs"),
         combined_logs_folder=_text(root, "folders/combined_logs"),
+        max_lines_per_part=_int(
+            root, "split/max_lines_per_part", DEFAULT_MAX_LINES_PER_PART
+        ),
     )
 
 
@@ -58,6 +63,10 @@ def save_settings(settings: AppSettings) -> None:
     folders = ET.SubElement(root, "folders")
     ET.SubElement(folders, "raw_logs").text = settings.raw_logs_folder
     ET.SubElement(folders, "combined_logs").text = settings.combined_logs_folder
+    split = ET.SubElement(root, "split")
+    ET.SubElement(split, "max_lines_per_part").text = str(
+        clamp_max_lines_per_part(settings.max_lines_per_part)
+    )
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
     path = settings_path()
@@ -65,8 +74,23 @@ def save_settings(settings: AppSettings) -> None:
     tree.write(path, encoding="utf-8", xml_declaration=True)
 
 
+def clamp_max_lines_per_part(value: int) -> int:
+    """Keep the hard line cap at least meta + header + one data row."""
+    return max(MIN_MAX_LINES_PER_PART, value)
+
+
 def _text(root: ET.Element, path: str) -> str:
     node = root.find(path)
     if node is None or node.text is None:
         return ""
     return node.text
+
+
+def _int(root: ET.Element, path: str, default: int) -> int:
+    text = _text(root, path).strip()
+    if not text:
+        return default
+    try:
+        return clamp_max_lines_per_part(int(text, 10))
+    except ValueError:
+        return default

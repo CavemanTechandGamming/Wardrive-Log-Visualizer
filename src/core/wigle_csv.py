@@ -47,6 +47,11 @@ WIGLE_1_6_COLUMNS: tuple[str, ...] = (
 
 WIGLE_1_6_META_PREFIX = "WigleWifi-1.6"
 
+# Hard line-cap split (locked B): every part file counts meta + column header + data.
+PREAMBLE_LINES = 2
+DEFAULT_MAX_LINES_PER_PART = 100_000
+MIN_MAX_LINES_PER_PART = 3  # meta + header + at least one data row
+
 _FIRST_SEEN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 _INT_INDEXES = (4, 5, 6)
 _FLOAT_INDEXES = (7, 8, 9, 10)
@@ -206,16 +211,80 @@ def merge_wigle_files(paths: Sequence[str | Path]) -> WigleLog:
     return merge_logs(tuple(read_wigle_csv(path) for path in paths))
 
 
-def default_combined_csv_name(log: WigleLog) -> str:
+def max_data_rows_for_line_cap(max_lines: int) -> int:
+    """How many observation rows fit under a total-line hard cap (option B)."""
+    if max_lines < MIN_MAX_LINES_PER_PART:
+        raise WigleCsvError(
+            f"Max lines per part must be at least {MIN_MAX_LINES_PER_PART} "
+            "(meta + column header + one data row)."
+        )
+    return max_lines - PREAMBLE_LINES
+
+
+def needs_row_cap_split(log: WigleLog, max_lines: int) -> bool:
+    """True when the log would exceed ``max_lines`` including preamble."""
+    return len(log.observations) > max_data_rows_for_line_cap(max_lines)
+
+
+def split_log(log: WigleLog, max_lines: int) -> tuple[WigleLog, ...]:
+    """Split a log into parts that each stay within the hard line cap.
+
+    Every part keeps the same meta line and a full column header (written by
+    ``format_wigle_csv``). Rows are never cut mid-observation. If the log
+    already fits, returns a one-element tuple with the same log.
+    """
+    if not log.observations:
+        raise WigleCsvError("Nothing to split — the log has no rows.")
+    max_data = max_data_rows_for_line_cap(max_lines)
+    if len(log.observations) <= max_data:
+        return (log,)
+    parts: list[WigleLog] = []
+    observations = log.observations
+    for start in range(0, len(observations), max_data):
+        chunk = observations[start : start + max_data]
+        parts.append(WigleLog(meta=log.meta, observations=chunk))
+    return tuple(parts)
+
+
+def write_split_parts(
+    log: WigleLog,
+    directory: str | Path,
+    max_lines: int,
+) -> tuple[Path, ...]:
+    """Write row-cap parts into ``directory`` using locked Wardriving Log names.
+
+    Multi-part outputs always get `` Part N``. A single fitting part is written
+    without a part suffix.
+    """
+    parts = split_log(log, max_lines)
+    out_dir = Path(directory)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    multi = len(parts) > 1
+    for index, part_log in enumerate(parts, start=1):
+        name = default_combined_csv_name(
+            part_log, part=index if multi else None
+        )
+        path = out_dir / name
+        write_wigle_csv(path, part_log)
+        written.append(path)
+    return tuple(written)
+
+
+def default_combined_csv_name(log: WigleLog, *, part: int | None = None) -> str:
     """Suggest a Save As basename from the earliest and latest FirstSeen.
 
     One calendar day::
 
-        Wardrive Log Wednesday September 30th 2026.csv
+        Wardriving Log September 30th 2026.csv
 
-    Multiple days::
+    Multiple days (interim span until a dedicated span form is locked)::
 
-        Wardrive Log Wednesday September 30th 2026 - Thursday October 1st 2026.csv
+        Wardriving Log September 30th 2026 - October 1st 2026.csv
+
+    Row-cap split parts (optional ``part``)::
+
+        Wardriving Log September 30th 2026 Part 1.csv
 
     Uses min and max ``FirstSeen`` among every row in the log (string order
     matches chronological order for ``YYYY-MM-DD HH:MM:SS``).
@@ -227,8 +296,14 @@ def default_combined_csv_name(log: WigleLog) -> str:
     last = datetime.strptime(max(times), "%Y-%m-%d %H:%M:%S")
     start = _pretty_capture_day(first)
     if first.date() == last.date():
-        return f"Wardrive Log {start}.csv"
-    return f"Wardrive Log {start} - {_pretty_capture_day(last)}.csv"
+        base = f"Wardriving Log {start}"
+    else:
+        base = f"Wardriving Log {start} - {_pretty_capture_day(last)}"
+    if part is not None:
+        if part < 1:
+            raise WigleCsvError("Part number must be 1 or greater.")
+        base = f"{base} Part {part}"
+    return f"{base}.csv"
 
 
 @dataclass(frozen=True)
@@ -261,7 +336,8 @@ def counts_by_type(
 
 
 def _pretty_capture_day(when: datetime) -> str:
-    return f"{when.strftime('%A')} {when.strftime('%B')} {_ordinal_day(when.day)} {when.year}"
+    """Month DayOrdinal Year — no weekday (locked output naming 2026-10-01)."""
+    return f"{when.strftime('%B')} {_ordinal_day(when.day)} {when.year}"
 
 
 def _ordinal_day(day: int) -> str:

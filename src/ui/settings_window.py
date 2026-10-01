@@ -1,4 +1,4 @@
-"""Settings window — keys, batch folders, and activity log helpers."""
+"""Settings window — keys, batch folders, split cap, and activity log helpers."""
 
 from __future__ import annotations
 
@@ -13,7 +13,22 @@ from src.core.activity_log import (
     log_activity,
     open_activity_log,
 )
-from src.core.settings import AppSettings, load_settings, save_settings, settings_path
+from src.core.settings import (
+    AppSettings,
+    clamp_max_lines_per_part,
+    load_settings,
+    save_settings,
+    settings_path,
+)
+from src.core.wigle_csv import (
+    DEFAULT_MAX_LINES_PER_PART,
+    MIN_MAX_LINES_PER_PART,
+    PREAMBLE_LINES,
+)
+
+# Practical slider range; typed field can go outside (clamped on save to >= 3).
+_SLIDER_MIN = 1_000
+_SLIDER_MAX = 500_000
 
 
 class SettingsWindow(ctk.CTkToplevel):
@@ -22,12 +37,13 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master: ctk.CTk) -> None:
         super().__init__(master)
         self.title("Settings")
-        self.geometry("640x480")
-        self.minsize(560, 420)
+        self.geometry("640x560")
+        self.minsize(560, 500)
         self.transient(master)
         self.grab_set()
 
         self._settings = load_settings()
+        self._syncing_lines = False
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=16, pady=(16, 8))
@@ -109,6 +125,44 @@ class SettingsWindow(ctk.CTkToplevel):
             out_row, text="Browse", width=80, command=self._browse_combined
         ).pack(side="left", padx=(8, 0))
 
+        ctk.CTkLabel(tab, text="Max lines per split part", anchor="w").pack(
+            fill="x"
+        )
+        ctk.CTkLabel(
+            tab,
+            text=(
+                f"Hard cap for each part file (meta + column header + data). "
+                f"Default {DEFAULT_MAX_LINES_PER_PART:,} → "
+                f"{DEFAULT_MAX_LINES_PER_PART - PREAMBLE_LINES:,} data rows. "
+                f"Minimum {MIN_MAX_LINES_PER_PART}."
+            ),
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x", pady=(0, 4))
+        lines_row = ctk.CTkFrame(tab, fg_color="transparent")
+        lines_row.pack(fill="x", pady=(0, 4))
+        self.lines_entry = ctk.CTkEntry(lines_row, width=120)
+        self.lines_entry.pack(side="left")
+        self.lines_entry.insert(0, str(self._settings.max_lines_per_part))
+        self.lines_entry.bind("<KeyRelease>", self._on_lines_typed)
+        self.lines_entry.bind("<FocusOut>", self._on_lines_typed)
+        ctk.CTkLabel(
+            lines_row,
+            text="lines",
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
+        ).pack(side="left", padx=(8, 0))
+        self.lines_slider = ctk.CTkSlider(
+            tab,
+            from_=_SLIDER_MIN,
+            to=_SLIDER_MAX,
+            number_of_steps=(_SLIDER_MAX - _SLIDER_MIN) // 1_000,
+            command=self._on_lines_slider,
+        )
+        self.lines_slider.pack(fill="x", pady=(0, 12))
+        self._set_lines_widgets(self._settings.max_lines_per_part)
+
         ctk.CTkLabel(tab, text="Activity log", anchor="w").pack(fill="x")
         ctk.CTkLabel(
             tab,
@@ -164,6 +218,53 @@ class SettingsWindow(ctk.CTkToplevel):
         self.lift()
         self.focus_force()
 
+    def _set_lines_widgets(self, value: int) -> None:
+        self._syncing_lines = True
+        try:
+            clamped = clamp_max_lines_per_part(value)
+            self.lines_entry.delete(0, "end")
+            self.lines_entry.insert(0, str(clamped))
+            slider_value = min(max(clamped, _SLIDER_MIN), _SLIDER_MAX)
+            self.lines_slider.set(slider_value)
+        finally:
+            self._syncing_lines = False
+
+    def _on_lines_slider(self, value: float) -> None:
+        if self._syncing_lines:
+            return
+        self._syncing_lines = True
+        try:
+            lines = int(round(float(value) / 1_000.0) * 1_000)
+            lines = clamp_max_lines_per_part(lines)
+            self.lines_entry.delete(0, "end")
+            self.lines_entry.insert(0, str(lines))
+        finally:
+            self._syncing_lines = False
+
+    def _on_lines_typed(self, _event: object = None) -> None:
+        if self._syncing_lines:
+            return
+        text = self.lines_entry.get().strip().replace(",", "")
+        if not text:
+            return
+        try:
+            value = int(text, 10)
+        except ValueError:
+            return
+        self._syncing_lines = True
+        try:
+            slider_value = min(max(value, _SLIDER_MIN), _SLIDER_MAX)
+            self.lines_slider.set(slider_value)
+        finally:
+            self._syncing_lines = False
+
+    def _parsed_max_lines(self) -> int | None:
+        text = self.lines_entry.get().strip().replace(",", "")
+        try:
+            return clamp_max_lines_per_part(int(text, 10))
+        except ValueError:
+            return None
+
     def _browse_raw(self) -> None:
         chosen = filedialog.askdirectory(
             parent=self, title="Raw logs folder", mustexist=True
@@ -212,12 +313,21 @@ class SettingsWindow(ctk.CTkToplevel):
             )
 
     def _save(self) -> None:
+        max_lines = self._parsed_max_lines()
+        if max_lines is None:
+            messagebox.showerror(
+                "Settings",
+                "Max lines per split part must be a whole number.",
+                parent=self,
+            )
+            return
         settings = AppSettings(
             wigle_api_name=self.wigle_name.get().strip(),
             wigle_api_token=self.wigle_token.get().strip(),
             wdgwars_api_key=self.wdgwars_key.get().strip(),
             raw_logs_folder=self.raw_folder.get().strip(),
             combined_logs_folder=self.combined_folder.get().strip(),
+            max_lines_per_part=max_lines,
         )
         try:
             save_settings(settings)
@@ -229,5 +339,7 @@ class SettingsWindow(ctk.CTkToplevel):
             )
             return
         # Never put key/token values into the activity log.
-        log_activity("Saved settings.xml.")
+        log_activity(
+            f"Saved settings.xml (max lines per part: {max_lines:,})."
+        )
         self.destroy()

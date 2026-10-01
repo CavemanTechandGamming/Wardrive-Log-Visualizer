@@ -6,7 +6,7 @@ import sys
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -30,7 +30,9 @@ from src.core.wigle_csv import (
     counts_by_type,
     default_combined_csv_name,
     merge_logs,
+    needs_row_cap_split,
     read_wigle_csv,
+    write_split_parts,
     write_wigle_csv,
 )
 from src.ui.settings_window import SettingsWindow
@@ -97,6 +99,9 @@ class MapApp:
         ctk.CTkButton(
             bar, text="Save combined CSV", command=self.save_combined
         ).pack(side="left", padx=(8, 0))
+        ctk.CTkButton(bar, text="Split CSV", command=self.split_csv).pack(
+            side="left", padx=(8, 0)
+        )
         ctk.CTkButton(bar, text="Fit", command=self.fit).pack(side="left", padx=(8, 0))
         ctk.CTkButton(bar, text="Settings", command=self.open_settings).pack(
             side="left", padx=(8, 0)
@@ -285,6 +290,8 @@ class MapApp:
             return
         error = ""
         loaded = 0
+        split_notes: list[str] = []
+        max_lines = self.settings.max_lines_per_part
         for path in csv_paths:
             try:
                 log = read_wigle_csv(path)
@@ -293,6 +300,40 @@ class MapApp:
                 log_activity(error)
                 break
             file_path = Path(path)
+            if needs_row_cap_split(log, max_lines):
+                try:
+                    part_paths = self._auto_split_and_write(log, file_path, max_lines)
+                except (OSError, WigleCsvError) as exc:
+                    error = f"Could not split {file_path.name}: {exc}"
+                    log_activity(error)
+                    break
+                for part_path in part_paths:
+                    try:
+                        part_log = read_wigle_csv(part_path)
+                    except (OSError, WigleCsvError) as exc:
+                        error = f"Could not read split part {part_path.name}: {exc}"
+                        log_activity(error)
+                        break
+                    self.entries.append(
+                        LoadedLog(
+                            path=part_path,
+                            name=part_path.name,
+                            log=part_log,
+                            enabled=True,
+                        )
+                    )
+                    counts = count_observations(part_log.observations)
+                    log_activity(f"Loaded {part_path.name} ({counts.label()}).")
+                    loaded += 1
+                if error:
+                    break
+                note = (
+                    f"Split {file_path.name} into {len(part_paths)} part(s) "
+                    f"(max {max_lines:,} lines each)."
+                )
+                split_notes.append(note)
+                log_activity(note)
+                continue
             self.entries.append(
                 LoadedLog(
                     path=file_path,
@@ -315,10 +356,88 @@ class MapApp:
         self.fit()
         if error:
             self.status.configure(text=error)
+        elif split_notes and skipped:
+            self.status.configure(
+                text=(
+                    f"Loaded {loaded} CSV file(s) after auto-split. "
+                    f"Skipped {skipped} non-CSV drop(s)."
+                )
+            )
+        elif split_notes:
+            self.status.configure(text=split_notes[-1])
         elif skipped:
             self.status.configure(
                 text=f"Loaded {loaded} CSV file(s). Skipped {skipped} non-CSV drop(s)."
             )
+
+    def _auto_split_and_write(
+        self, log: WigleLog, source: Path, max_lines: int
+    ) -> tuple[Path, ...]:
+        """Write row-cap parts beside the source (or into combined folder)."""
+        out_dir = source.parent
+        combined = self.settings.combined_logs_folder.strip()
+        if combined:
+            candidate = Path(combined)
+            if candidate.is_dir():
+                out_dir = candidate
+        return write_split_parts(log, out_dir, max_lines)
+
+    def split_csv(self) -> None:
+        """Manually split the active combined log (or a chosen file) by line cap."""
+        log = self.combined()
+        source_label = "combined session"
+        if log is None:
+            selected = filedialog.askopenfilename(
+                parent=self.root,
+                title="Split wardrive log",
+                filetypes=[("WiGLE CSV", "*.csv"), ("All files", "*.*")],
+            )
+            if not selected:
+                log_activity("Split CSV — cancelled (no file).")
+                return
+            try:
+                log = read_wigle_csv(selected)
+            except (OSError, WigleCsvError) as exc:
+                message = f"Could not read {Path(selected).name}: {exc}"
+                self.status.configure(text=message)
+                log_activity(message)
+                return
+            source_label = Path(selected).name
+        if not log.observations:
+            self.status.configure(text="Nothing to split — the log has no rows.")
+            return
+        max_lines = self.settings.max_lines_per_part
+        initial_dir = self.settings.combined_logs_folder.strip() or None
+        out_dir = filedialog.askdirectory(
+            parent=self.root,
+            title="Folder for split parts",
+            mustexist=True,
+            initialdir=initial_dir,
+        )
+        if not out_dir:
+            log_activity("Split CSV — cancelled (no folder).")
+            return
+        try:
+            paths = write_split_parts(log, out_dir, max_lines)
+        except (OSError, WigleCsvError) as exc:
+            message = f"Could not split: {exc}"
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+        names = ", ".join(path.name for path in paths)
+        message = (
+            f"Wrote {len(paths)} part(s) from {source_label} "
+            f"(max {max_lines:,} lines): {names}"
+        )
+        self.status.configure(text=message)
+        log_activity(message)
+        from_disk = source_label != "combined session"
+        if from_disk and messagebox.askyesno(
+            "Split CSV",
+            f"Wrote {len(paths)} file(s).\n\nLoad them into this session?",
+            parent=self.root,
+        ):
+            self.ingest_paths([str(path) for path in paths])
 
     def _rebuild_file_list(self) -> None:
         for row in self._file_rows:
@@ -447,6 +566,34 @@ class MapApp:
         if log is None:
             self.status.configure(text="Turn on at least one log before saving.")
             log_activity("Save combined CSV — nothing to save (no logs on).")
+            return
+        max_lines = self.settings.max_lines_per_part
+        if needs_row_cap_split(log, max_lines):
+            initial_dir = self.settings.combined_logs_folder.strip() or None
+            out_dir = filedialog.askdirectory(
+                parent=self.root,
+                title="Folder for combined split parts",
+                mustexist=True,
+                initialdir=initial_dir,
+            )
+            if not out_dir:
+                log_activity("Save combined CSV — cancelled (no folder).")
+                return
+            try:
+                paths = write_split_parts(log, out_dir, max_lines)
+            except (OSError, WigleCsvError) as exc:
+                message = f"Could not save combined split: {exc}"
+                self.status.configure(text=message)
+                log_activity(message)
+                return
+            counts = count_observations(log.observations)
+            names = ", ".join(path.name for path in paths)
+            message = (
+                f"Saved combined {counts.label()} as {len(paths)} part(s) "
+                f"(max {max_lines:,} lines): {names}"
+            )
+            self.status.configure(text=message)
+            log_activity(message)
             return
         path = filedialog.asksaveasfilename(
             parent=self.root,

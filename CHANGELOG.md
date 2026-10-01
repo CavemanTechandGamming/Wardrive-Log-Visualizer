@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.0.3] - 2026-10-01
+
+### Added
+
+- Hard **row-cap split** (option B): each part file stays within a total line budget of meta + column header + data (default **100,000** lines → **99,998** data rows). Shared by manual **Split CSV**, **Save combined**, and auto-split on Add/drop.
+- Settings → General: **max lines per split part** — typed field + slider; persisted in `settings.xml`.
+
+### Changed
+
+- Save As / split part names use `Wardriving Log {Month} {DayOrdinal} {Year}.csv` (no weekday); multi-day span drops weekdays too. Optional `Part N` suffix for split parts.
+
 ## [0.0.2] - 2026-09-30
 
 ### Added

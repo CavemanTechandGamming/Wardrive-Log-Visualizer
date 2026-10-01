@@ -8,8 +8,8 @@
 # WARDRIVE_LOG_VISUALIZER_BUILD_KINDS=both to also build onedir.
 #
 # Outputs (example):
-#   dist/mac-apple-silicon/0.0.2/portable/WardriveLogVisualizer-0.0.2
-#   dist/ubuntu/0.0.2/portable/WardriveLogVisualizer-0.0.2
+#   dist/mac-apple-silicon/0.0.3/portable/WardriveLogVisualizer-0.0.3
+#   dist/ubuntu/0.0.3/portable/WardriveLogVisualizer-0.0.3
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
