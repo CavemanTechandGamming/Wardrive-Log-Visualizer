@@ -13,6 +13,12 @@ from src.core.activity_log import (
     log_activity,
     open_activity_log,
 )
+from src.core.blacklist import (
+    Blacklist,
+    blacklist_path,
+    load_blacklist,
+    save_blacklist,
+)
 from src.core.settings import (
     AppSettings,
     DEFAULT_INBOX_PULSE_SECONDS,
@@ -48,17 +54,20 @@ class SettingsWindow(ctk.CTkToplevel):
         self.grab_set()
 
         self._settings = load_settings()
+        self._blacklist = load_blacklist()
         self._syncing_lines = False
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=16, pady=(16, 8))
-        # Order: General first, About last.
+        # Order: General · Blacklist · WiGLE · WDGWars · About.
         tab_general = tabs.add("General")
+        tab_blacklist = tabs.add("Blacklist")
         tab_wigle = tabs.add("WiGLE")
         tab_wdg = tabs.add("WDGWars")
         tab_about = tabs.add("About")
 
         self._build_general_tab(tab_general)
+        self._build_blacklist_tab(tab_blacklist)
         self._build_wigle_tab(tab_wigle)
         self._build_wdgwars_tab(tab_wdg)
         self._build_about_tab(tab_about)
@@ -108,7 +117,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ).pack(fill="x", pady=(8, 0))
 
     def _build_general_tab(self, tab: ctk.CTkFrame) -> None:
-        ctk.CTkLabel(tab, text="Raw logs folder", anchor="w").pack(
+        ctk.CTkLabel(tab, text="Dropzone folder", anchor="w").pack(
             fill="x", pady=(8, 0)
         )
         raw_row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -120,7 +129,7 @@ class SettingsWindow(ctk.CTkToplevel):
             raw_row, text="Browse", width=80, command=self._browse_raw
         ).pack(side="left", padx=(8, 0))
 
-        ctk.CTkLabel(tab, text="Combined logs folder", anchor="w").pack(fill="x")
+        ctk.CTkLabel(tab, text="Cleared folder", anchor="w").pack(fill="x")
         out_row = ctk.CTkFrame(tab, fg_color="transparent")
         out_row.pack(fill="x", pady=(0, 8))
         self.combined_folder = ctk.CTkEntry(out_row)
@@ -129,12 +138,22 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkButton(
             out_row, text="Browse", width=80, command=self._browse_combined
         ).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(
+            tab,
+            text=(
+                "Automation reads pending .csv from Dropzone and writes day files "
+                "to Cleared."
+            ),
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x", pady=(0, 8))
 
         ctk.CTkLabel(tab, text="Inbox pulse interval", anchor="w").pack(fill="x")
         ctk.CTkLabel(
             tab,
             text=(
-                "How often the app checks Raw for new .csv files "
+                "How often the app checks Dropzone for new .csv files "
                 f"(format HH:MM:SS). Default {format_hhmmss(DEFAULT_INBOX_PULSE_SECONDS)}; "
                 f"min {format_hhmmss(MIN_INBOX_PULSE_SECONDS)}; "
                 f"max {format_hhmmss(MAX_INBOX_PULSE_SECONDS)}. "
@@ -212,6 +231,49 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkButton(
             log_row, text="Clear log file", command=self._clear_log
         ).pack(side="left", padx=(8, 0))
+
+    def _build_blacklist_tab(self, tab: ctk.CTkFrame) -> None:
+        ctk.CTkLabel(
+            tab,
+            text=(
+                "Rows matching these SSIDs or MACs are removed on Clean, "
+                "Clean and Combine, and Dropzone → Cleared writes. Matching is "
+                "case-sensitive and exact. Add / drop onto the map is not filtered."
+            ),
+            anchor="w",
+            justify="left",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x", pady=(8, 8))
+        ctk.CTkLabel(
+            tab,
+            text=f"Saved to:\n{blacklist_path()}",
+            anchor="w",
+            justify="left",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(tab, text="SSIDs (one per line)", anchor="w").pack(fill="x")
+        self.ssid_box = ctk.CTkTextbox(tab, height=120)
+        self.ssid_box.pack(fill="both", expand=True, pady=(0, 8))
+        if self._blacklist.ssids:
+            self.ssid_box.insert("1.0", "\n".join(self._blacklist.ssids) + "\n")
+
+        ctk.CTkLabel(tab, text="MACs / BSSIDs (one per line)", anchor="w").pack(
+            fill="x"
+        )
+        self.mac_box = ctk.CTkTextbox(tab, height=120)
+        self.mac_box.pack(fill="both", expand=True, pady=(0, 4))
+        if self._blacklist.macs:
+            self.mac_box.insert("1.0", "\n".join(self._blacklist.macs) + "\n")
+        ctk.CTkLabel(
+            tab,
+            text="Separators (: - .) are ignored when matching MACs; letter case is kept.",
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x")
 
     def _build_about_tab(self, tab: ctk.CTkFrame) -> None:
         ctk.CTkLabel(
@@ -300,7 +362,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _browse_raw(self) -> None:
         chosen = filedialog.askdirectory(
-            parent=self, title="Raw logs folder", mustexist=True
+            parent=self, title="Dropzone folder", mustexist=True
         )
         if chosen:
             self.raw_folder.delete(0, "end")
@@ -308,7 +370,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _browse_combined(self) -> None:
         chosen = filedialog.askdirectory(
-            parent=self, title="Combined logs folder", mustexist=True
+            parent=self, title="Cleared folder", mustexist=True
         )
         if chosen:
             self.combined_folder.delete(0, "end")
@@ -377,9 +439,29 @@ class SettingsWindow(ctk.CTkToplevel):
                 parent=self,
             )
             return
-        # Never put key/token values into the activity log.
+        ssids = [
+            line
+            for line in self.ssid_box.get("1.0", "end").splitlines()
+            if line != ""
+        ]
+        macs = [
+            line.strip()
+            for line in self.mac_box.get("1.0", "end").splitlines()
+            if line.strip() != ""
+        ]
+        try:
+            save_blacklist(Blacklist(ssids=ssids, macs=macs))
+        except OSError as exc:
+            messagebox.showerror(
+                "Settings",
+                f"Could not save blacklist.xml:\n{exc}",
+                parent=self,
+            )
+            return
+        # Never put key/token or blacklist values into the activity log.
         log_activity(
             f"Saved settings.xml (max lines per part: {max_lines:,}; "
-            f"inbox pulse: {format_hhmmss(pulse_seconds)})."
+            f"inbox pulse: {format_hhmmss(pulse_seconds)}) and blacklist.xml "
+            f"({len(ssids)} SSID(s), {len(macs)} MAC(s))."
         )
         self.destroy()

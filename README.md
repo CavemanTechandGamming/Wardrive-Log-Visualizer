@@ -19,21 +19,21 @@ Desktop tool to **ingest wardrive logs**, **merge them into one combined log**, 
 - **Zoom** (scroll), **pan** (drag), **click** a point for its fields; **Previous** / **Next** or arrow keys walk the log
 - **Drop** CSVs on the left square (or use **Add logs**); per-file on/off toggles; **×** removes a file from the list
 - **Legend filters** — click WIFI / BLE / LTE / NR to hide or show that type (gray when off); Save still keeps every row
-- **Save combined CSV** with a suggested name from the earliest and latest FirstSeen (`Wardriving Log September 30th 2026.csv`, or a start–end span across calendar days)
-- **Row-cap split** — **Split CSV** or auto-split on Add/drop when a file would exceed the Settings line cap (default 100,000 lines including meta + header); **Save combined** writes `Part N` files when over the same cap
+- **Save / export** — File → **Combine** (merge + save), **Clean** (blacklist; writes `{name} CLEAN.csv` only when rows were removed), **Clean and Combine** (merge then blacklist; ` CLEAN` in the name only when rows were removed). Row-cap → `Part N` (with ` CLEAN` last when cleaned).
+- **Row-cap split** — File → **Split CSV**; Dropzone automation may auto-split oversized day files. Map Add/drop does **not** auto-split.
 - **Unique vs samples** on the legend, file list, and status (unique = distinct MAC+Type; samples = every row)
-- **Settings** (General · WiGLE · WDGWars · About) for API keys, raw/combined folders, max lines per split part, inbox pulse `HH:MM:SS`, and open/clear the activity log — stored in local `settings.xml`
-- **Batch inbox** — pulse Raw → Combined by FirstSeen day; rename finished sources to `.csv.done`; same-day re-drops merge into the existing Combined day file; **Process inbox** for an immediate pass
+- **Settings** (General · **Blacklist** · WiGLE · WDGWars · About) — Dropzone/Cleared folders, pulse, SSID/MAC blacklist (`blacklist.xml`), keys, activity log
+- **Automation** — pulse Dropzone → Cleared by FirstSeen day; blacklist strip; `.csv.done`; same-day merge; Process Dropzone / open folders from the menu
 - **Activity log** — plain-English `logs/activity.log` beside the app install
 - **Planned:** upload to **WiGLE** / **WDGWars** (keys already live in Settings)
 
-Alpha `0.0.4` — run from source until a GitHub Release is published (packaging scripts and Actions are in the repo).
+Alpha `0.0.5` — run from source until a GitHub Release is published (packaging scripts and Actions are in the repo).
 
 ---
 
 ## Download
 
-Releases are not published yet (alpha `0.0.4`). When they exist:
+Releases are not published yet (alpha `0.0.5`). When they exist:
 
 1. Open this repository’s **[Releases](https://github.com/CavemanTechandGamming/Wardrive-Log-Visualizer/releases)** page.
 2. Download the file for your OS:
@@ -49,12 +49,12 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## How to use
 
-1. **Drop** a CSV onto the square on the left, or use **Add logs**. Loaded files appear under the square. Toggle a file off to hide it from the map without removing it; toggle it back on to load it again. **×** on the right drops it from the list entirely.
+1. **Drop** a CSV onto the square on the left, or use **File → Add logs**. Loaded files appear under the square. Toggle a file off to hide it from the map without removing it; toggle it back on to load it again. **×** on the right drops it from the list entirely. **File → Clear log** unloads everything.
 2. The app **merges** the files that are on, keeps every logged row, and stitches them by **FirstSeen**. Points are drawn from those coordinates. Adding another log refits the map around everything loaded so far.
-3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the visible log. **Fit** frames every point again. Click a type in the legend (**WIFI**, **BLE**, **LTE**, **NR**) to hide or show it — gray means off.
-4. **Save combined CSV** when you want a file WiGLE or WDGWars can take. Rename in the dialog if you want. If the combined log is over the line cap, the app asks for a folder and writes `Part N` files instead.
-5. **Split CSV** splits the active combined log (or a chosen file) by the same Settings line cap.
-6. **Settings** holds keys, folders, max lines per split part, inbox pulse interval (`HH:MM:SS`), and open/clear for the activity log. Set Raw + Combined folders to enable the inbox pulse; use **Process inbox** to run one pass immediately.
+3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the visible log. **View → Fit map** frames every point again; **View → Center** pans to the selection. Click a type in the legend (**WIFI**, **BLE**, **LTE**, **NR**) to hide or show it — gray means off.
+4. **File → Combine** merges and saves. **Clean** blacklists each enabled file and writes `{name} CLEAN.csv` only when something was removed (no hits → skip that file; multiple hits → pick a folder). **Clean and Combine** merges first, then blacklists — always saves the merge; appends ` CLEAN` only when rows were removed. Over the line cap on combine paths → `Part N` files.
+5. **File → Split CSV** splits by the Settings line cap — map import never auto-splits.
+6. **Settings** holds Dropzone/Cleared folders, pulse interval, **Blacklist**, keys, and activity log helpers. **Automation → Process Dropzone** runs one inbox pass immediately.
 
 ---
 
@@ -65,8 +65,8 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 - Counts match the CSV. An on-device app may show a higher “seen” total if it filters personal devices from the export.
 - If a file fails to parse, the status line names it. The logs that loaded stay on the map.
 - Drag-and-drop needs `tkinterdnd2` (installed by `scripts/setup_env`). **Add logs** works without it.
-- Local files next to the app (not on GitHub): `settings.xml`, `logs/activity.log`.
-- Inbox only picks up top-level Raw `*.csv` files. After a successful pass, sources become `*.csv.done` and are left alone. Combined outputs for the same calendar day are merged on later passes.
+- Local files next to the app (not on GitHub): `settings.xml`, `blacklist.xml`, `logs/activity.log`.
+- Inbox / Dropzone only picks up top-level `*.csv` files. After a successful pass, sources become `*.csv.done`. Cleared outputs use `Wardriving Log {Month} {DayOrdinal} {Year}.csv` (and `Part N` if split) — no `CLEAN` word on automation titles. Blacklist still strips matching rows into Cleared. File → Clean / Clean and Combine append ` CLEAN` only when the blacklist actually removed rows.
 
 ---
 

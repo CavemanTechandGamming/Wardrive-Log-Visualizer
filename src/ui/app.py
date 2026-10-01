@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 import tkinter as tk
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ import customtkinter as ctk
 
 from src import APP_NAME, __version__
 from src.core.activity_log import log_activity
+from src.core.blacklist import apply_blacklist
 from src.core.inbox import process_inbox, summarize_inbox_result
 from src.core.plot import (
     MapSpace,
@@ -27,6 +30,7 @@ from src.core.wigle_csv import (
     Observation,
     WigleCsvError,
     WigleLog,
+    cleaned_input_csv_name,
     count_observations,
     counts_by_type,
     default_combined_csv_name,
@@ -94,28 +98,16 @@ class MapApp:
         root.minsize(900, 520)
         self._set_window_icon()
         root.after(0, self._set_window_icon)
+        self._build_menubar()
 
-        bar = ctk.CTkFrame(root, fg_color="transparent")
-        bar.pack(fill="x", padx=16, pady=(16, 8))
-
-        ctk.CTkButton(bar, text="Add logs", command=self.add_files).pack(side="left")
-        ctk.CTkButton(
-            bar, text="Save combined CSV", command=self.save_combined
-        ).pack(side="left", padx=(8, 0))
-        ctk.CTkButton(bar, text="Split CSV", command=self.split_csv).pack(
-            side="left", padx=(8, 0)
-        )
-        ctk.CTkButton(
-            bar, text="Process inbox", command=self.process_inbox_now
-        ).pack(side="left", padx=(8, 0))
-        ctk.CTkButton(bar, text="Fit", command=self.fit).pack(side="left", padx=(8, 0))
-        ctk.CTkButton(bar, text="Settings", command=self.open_settings).pack(
-            side="left", padx=(8, 0)
-        )
+        status_bar = ctk.CTkFrame(root, fg_color="transparent")
+        status_bar.pack(fill="x", padx=16, pady=(8, 4))
         self.status = ctk.CTkLabel(
-            bar, text="Drop a log on the left square, or use Add logs."
+            status_bar,
+            text="Drop a log on the left square, or use File → Add logs.",
+            anchor="w",
         )
-        self.status.pack(side="left", padx=(16, 0))
+        self.status.pack(fill="x")
 
         legend = ctk.CTkFrame(root, fg_color="transparent")
         legend.pack(fill="x", padx=16, pady=(0, 8))
@@ -261,6 +253,45 @@ class MapApp:
         except Exception:
             return
 
+    def _build_menubar(self) -> None:
+        menubar = tk.Menu(self.root)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Add logs…", command=self.add_files)
+        file_menu.add_command(label="Clear log", command=self.clear_log)
+        file_menu.add_separator()
+        file_menu.add_command(label="Combine…", command=self.combine_logs)
+        file_menu.add_command(label="Clean…", command=self.clean_logs)
+        file_menu.add_command(
+            label="Clean and Combine…", command=self.clean_and_combine
+        )
+        file_menu.add_command(label="Split CSV…", command=self.split_csv)
+        file_menu.add_separator()
+        file_menu.add_command(label="Settings…", command=self.open_settings)
+        if sys.platform != "darwin":
+            file_menu.add_separator()
+            file_menu.add_command(label="Exit", command=self.root.destroy)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        auto_menu = tk.Menu(menubar, tearoff=0)
+        auto_menu.add_command(
+            label="Process Dropzone", command=self.process_inbox_now
+        )
+        auto_menu.add_command(
+            label="Open Dropzone…", command=self.open_dropzone_folder
+        )
+        auto_menu.add_command(
+            label="Open Cleared…", command=self.open_cleared_folder
+        )
+        menubar.add_cascade(label="Automation", menu=auto_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_command(label="Fit map", command=self.fit)
+        view_menu.add_command(label="Center", command=self.center_selection)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        self.root.configure(menu=menubar)
+
     def open_settings(self) -> None:
         if self._settings_window is not None and self._settings_window.winfo_exists():
             self._settings_window.lift()
@@ -306,14 +337,14 @@ class MapApp:
         if not raw or not combined:
             if not silent:
                 self.status.configure(
-                    text="Set Raw and Combined folders in Settings before inbox."
+                    text="Set Dropzone and Cleared folders in Settings before automation."
                 )
-                log_activity("Inbox — folders not set.")
+                log_activity("Process Dropzone — folders not set.")
             return
         raw_path = Path(raw)
         if not raw_path.is_dir():
             if not silent:
-                message = f"Raw folder missing: {raw}"
+                message = f"Dropzone folder missing: {raw}"
                 self.status.configure(text=message)
                 log_activity(message)
             return
@@ -334,6 +365,43 @@ class MapApp:
         log_activity(summary)
         if result.written or result.errors or not silent:
             self.status.configure(text=summary)
+
+    def open_dropzone_folder(self) -> None:
+        self._open_settings_folder(
+            self.settings.raw_logs_folder.strip(),
+            label="Dropzone",
+        )
+
+    def open_cleared_folder(self) -> None:
+        self._open_settings_folder(
+            self.settings.combined_logs_folder.strip(),
+            label="Cleared",
+        )
+
+    def _open_settings_folder(self, folder: str, *, label: str) -> None:
+        if not folder:
+            message = f"Set the {label} folder in Settings first."
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+        path = Path(folder)
+        if not path.is_dir():
+            message = f"{label} folder missing: {folder}"
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(path)], check=False)
+            else:
+                subprocess.run(["xdg-open", str(path)], check=False)
+            log_activity(f"Opened {label} folder.")
+        except OSError as exc:
+            message = f"Could not open {label} folder: {exc}"
+            self.status.configure(text=message)
+            log_activity(message)
 
     def add_files(self) -> None:
         selected = filedialog.askopenfilenames(
@@ -357,8 +425,6 @@ class MapApp:
             return
         error = ""
         loaded = 0
-        split_notes: list[str] = []
-        max_lines = self.settings.max_lines_per_part
         for path in csv_paths:
             try:
                 log = read_wigle_csv(path)
@@ -367,40 +433,6 @@ class MapApp:
                 log_activity(error)
                 break
             file_path = Path(path)
-            if needs_row_cap_split(log, max_lines):
-                try:
-                    part_paths = self._auto_split_and_write(log, file_path, max_lines)
-                except (OSError, WigleCsvError) as exc:
-                    error = f"Could not split {file_path.name}: {exc}"
-                    log_activity(error)
-                    break
-                for part_path in part_paths:
-                    try:
-                        part_log = read_wigle_csv(part_path)
-                    except (OSError, WigleCsvError) as exc:
-                        error = f"Could not read split part {part_path.name}: {exc}"
-                        log_activity(error)
-                        break
-                    self.entries.append(
-                        LoadedLog(
-                            path=part_path,
-                            name=part_path.name,
-                            log=part_log,
-                            enabled=True,
-                        )
-                    )
-                    counts = count_observations(part_log.observations)
-                    log_activity(f"Loaded {part_path.name} ({counts.label()}).")
-                    loaded += 1
-                if error:
-                    break
-                note = (
-                    f"Split {file_path.name} into {len(part_paths)} part(s) "
-                    f"(max {max_lines:,} lines each)."
-                )
-                split_notes.append(note)
-                log_activity(note)
-                continue
             self.entries.append(
                 LoadedLog(
                     path=file_path,
@@ -423,31 +455,10 @@ class MapApp:
         self.fit()
         if error:
             self.status.configure(text=error)
-        elif split_notes and skipped:
-            self.status.configure(
-                text=(
-                    f"Loaded {loaded} CSV file(s) after auto-split. "
-                    f"Skipped {skipped} non-CSV drop(s)."
-                )
-            )
-        elif split_notes:
-            self.status.configure(text=split_notes[-1])
         elif skipped:
             self.status.configure(
                 text=f"Loaded {loaded} CSV file(s). Skipped {skipped} non-CSV drop(s)."
             )
-
-    def _auto_split_and_write(
-        self, log: WigleLog, source: Path, max_lines: int
-    ) -> tuple[Path, ...]:
-        """Write row-cap parts beside the source (or into combined folder)."""
-        out_dir = source.parent
-        combined = self.settings.combined_logs_folder.strip()
-        if combined:
-            candidate = Path(combined)
-            if candidate.is_dir():
-                out_dir = candidate
-        return write_split_parts(log, out_dir, max_lines)
 
     def split_csv(self) -> None:
         """Manually split the active combined log (or a chosen file) by line cap."""
@@ -628,65 +639,291 @@ class MapApp:
         paths = list(self.root.tk.splitlist(data))
         self.ingest_paths(paths)
 
-    def save_combined(self) -> None:
+    def clear_log(self) -> None:
+        """Unload every file from the session."""
+        if not self.entries:
+            self.status.configure(text="Nothing loaded to clear.")
+            return
+        count = len(self.entries)
+        self.entries.clear()
+        self._rebuild_file_list()
+        self._selected = None
+        self.position.configure(text="")
+        self._set_detail(
+            "Click a point. Previous, Next, or the arrow keys move through the log."
+        )
+        self.fit()
+        message = f"Cleared {count} loaded log(s)."
+        self.status.configure(text=message)
+        log_activity(message)
+
+    def combine_logs(self) -> None:
+        """Merge enabled logs as-is and save (no blacklist)."""
         log = self.combined()
         if log is None:
-            self.status.configure(text="Turn on at least one log before saving.")
-            log_activity("Save combined CSV — nothing to save (no logs on).")
+            self.status.configure(text="Turn on at least one log before Combine.")
+            log_activity("Combine — nothing to save (no logs on).")
             return
-        max_lines = self.settings.max_lines_per_part
-        if needs_row_cap_split(log, max_lines):
+        self._export_log(
+            log,
+            action="Combine",
+            cleaned=False,
+            excluded=0,
+            initialfile=default_combined_csv_name(log),
+        )
+
+    def clean_logs(self) -> None:
+        """Blacklist each enabled file; write only when rows were removed.
+
+        One file with hits → Save As ``{basename} CLEAN.csv``.
+        Multiple files with hits → ask for a folder; one cleaned CSV per hit.
+        Files with zero blacklist hits are skipped (no rewrite, no CLEAN name).
+        Does not merge (that is Clean and Combine).
+        """
+        enabled = [entry for entry in self.entries if entry.enabled]
+        if not enabled:
+            self.status.configure(text="Turn on at least one log before Clean.")
+            log_activity("Clean — nothing to save (no logs on).")
+            return
+
+        if len(enabled) == 1:
+            entry = enabled[0]
+            cleaned, excluded = apply_blacklist(entry.log)
+            if excluded == 0:
+                message = (
+                    f"Clean — nothing to remove in {entry.name}; skipped."
+                )
+                self.status.configure(text=message)
+                log_activity(message)
+                return
+            log_activity(
+                f"Clean — excluded {excluded} row(s) from {entry.name}."
+            )
+            if not cleaned.observations:
+                self.status.configure(
+                    text=f"Clean — nothing left in {entry.name} after blacklist."
+                )
+                log_activity(
+                    f"Clean — nothing left in {entry.name} after blacklist."
+                )
+                return
             initial_dir = self.settings.combined_logs_folder.strip() or None
+            path = filedialog.asksaveasfilename(
+                parent=self.root,
+                title="Clean",
+                defaultextension=".csv",
+                filetypes=[("WiGLE CSV", "*.csv")],
+                initialfile=cleaned_input_csv_name(entry.name),
+                initialdir=initial_dir,
+            )
+            if not path:
+                log_activity("Clean — cancelled.")
+                return
+            write_wigle_csv(path, cleaned)
+            counts = count_observations(cleaned.observations)
+            message = (
+                f"Clean saved {counts.label()} to {Path(path).name}"
+                f" (excluded {excluded})"
+            )
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+
+        to_write: list[tuple[LoadedLog, WigleLog, int]] = []
+        skipped: list[str] = []
+        empty_after: list[str] = []
+        for entry in enabled:
+            cleaned, excluded = apply_blacklist(entry.log)
+            if excluded == 0:
+                skipped.append(entry.name)
+                continue
+            log_activity(
+                f"Clean — excluded {excluded} row(s) from {entry.name}."
+            )
+            if not cleaned.observations:
+                empty_after.append(entry.name)
+                continue
+            to_write.append((entry, cleaned, excluded))
+
+        for name in skipped:
+            log_activity(f"Clean — nothing to remove in {name}; skipped.")
+        for name in empty_after:
+            log_activity(f"Clean — nothing left in {name} after blacklist.")
+
+        if not to_write:
+            if empty_after:
+                message = (
+                    f"Clean — nothing left after blacklist"
+                    f" ({empty_after[0]})."
+                )
+            else:
+                message = "Clean — nothing to remove; no files written."
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+
+        initial_dir = self.settings.combined_logs_folder.strip() or None
+        out_dir = filedialog.askdirectory(
+            parent=self.root,
+            title="Folder for cleaned files",
+            mustexist=True,
+            initialdir=initial_dir,
+        )
+        if not out_dir:
+            log_activity("Clean — cancelled (no folder).")
+            return
+        out_path = Path(out_dir)
+        written: list[str] = []
+        total_excluded = 0
+        errors: list[str] = []
+        for entry, cleaned, excluded in to_write:
+            total_excluded += excluded
+            dest = out_path / cleaned_input_csv_name(entry.name)
+            try:
+                write_wigle_csv(dest, cleaned)
+            except OSError as exc:
+                errors.append(f"{entry.name}: {exc}")
+                continue
+            written.append(dest.name)
+        for err in errors:
+            log_activity(f"Clean — {err}")
+        if not written:
+            message = "Clean — no files written."
+            if errors:
+                message = f"Clean — no files written ({errors[0]})."
+            self.status.configure(text=message)
+            log_activity(message)
+            return
+        message = (
+            f"Clean saved {len(written)} file(s) to {out_path.name}"
+            f" (excluded {total_excluded} total)"
+            f": {', '.join(written)}"
+        )
+        if skipped:
+            message += f"; skipped {len(skipped)} with no matches"
+        self.status.configure(text=message)
+        log_activity(message)
+
+    def clean_and_combine(self) -> None:
+        """Merge enabled logs, then blacklist; CLEAN in name only if rows removed."""
+        log = self.combined()
+        if log is None:
+            self.status.configure(
+                text="Turn on at least one log before Clean and Combine."
+            )
+            log_activity("Clean and Combine — nothing to save (no logs on).")
+            return
+        log, excluded = apply_blacklist(log)
+        did_clean = excluded > 0
+        if did_clean:
+            log_activity(
+                f"Clean and Combine — excluded {excluded} row(s) by blacklist."
+            )
+        else:
+            log_activity(
+                "Clean and Combine — nothing to remove; saving without CLEAN."
+            )
+        if not log.observations:
+            self.status.configure(
+                text="Clean and Combine — nothing left after blacklist."
+            )
+            log_activity("Clean and Combine — nothing left after blacklist.")
+            return
+        self._export_log(
+            log,
+            action="Clean and Combine",
+            cleaned=did_clean,
+            excluded=excluded,
+            initialfile=default_combined_csv_name(log, cleaned=did_clean),
+        )
+
+    def _export_log(
+        self,
+        log: WigleLog,
+        *,
+        action: str,
+        cleaned: bool,
+        excluded: int,
+        initialfile: str,
+    ) -> None:
+        max_lines = self.settings.max_lines_per_part
+        initial_dir = self.settings.combined_logs_folder.strip() or None
+        if needs_row_cap_split(log, max_lines):
             out_dir = filedialog.askdirectory(
                 parent=self.root,
-                title="Folder for combined split parts",
+                title=f"Folder for {action} split parts",
                 mustexist=True,
                 initialdir=initial_dir,
             )
             if not out_dir:
-                log_activity("Save combined CSV — cancelled (no folder).")
+                log_activity(f"{action} — cancelled (no folder).")
                 return
             try:
-                paths = write_split_parts(log, out_dir, max_lines)
+                paths = write_split_parts(
+                    log, out_dir, max_lines, cleaned=cleaned
+                )
             except (OSError, WigleCsvError) as exc:
-                message = f"Could not save combined split: {exc}"
+                message = f"Could not save {action} split: {exc}"
                 self.status.configure(text=message)
                 log_activity(message)
                 return
             counts = count_observations(log.observations)
             names = ", ".join(path.name for path in paths)
             message = (
-                f"Saved combined {counts.label()} as {len(paths)} part(s) "
-                f"(max {max_lines:,} lines): {names}"
+                f"{action} saved {counts.label()} as {len(paths)} part(s)"
+                + (f" (excluded {excluded})" if excluded else "")
+                + f": {names}"
             )
             self.status.configure(text=message)
             log_activity(message)
             return
         path = filedialog.asksaveasfilename(
             parent=self.root,
-            title="Save combined CSV",
+            title=action,
             defaultextension=".csv",
             filetypes=[("WiGLE CSV", "*.csv")],
-            initialfile=default_combined_csv_name(log),
+            initialfile=initialfile,
+            initialdir=initial_dir,
         )
         if not path:
-            log_activity("Save combined CSV — cancelled.")
+            log_activity(f"{action} — cancelled.")
             return
         write_wigle_csv(path, log)
         counts = count_observations(log.observations)
-        self.status.configure(
-            text=(
-                f"Saved {counts.label()} to {Path(path).name}"
-            )
+        message = (
+            f"{action} saved {counts.label()} to {Path(path).name}"
+            + (f" (excluded {excluded})" if excluded else "")
         )
-        log_activity(
-            f"Saved {Path(path).name} ({counts.label()})."
-        )
+        self.status.configure(text=message)
+        log_activity(message)
 
     def fit(self) -> None:
         self._user_moved = False
         self.view = None
         self.redraw()
+
+    def center_selection(self) -> None:
+        """Pan so the selected / current point sits in the middle of the map."""
+        if self._selected is None or not self._observations:
+            self.status.configure(text="Select a point first, then View → Center.")
+            return
+        if self.view is None or self._space is None:
+            return
+        if self._selected < 0 or self._selected >= len(self._space.xs):
+            return
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+        if width < 2 or height < 2:
+            return
+        x = self.view.origin_x + self._space.xs[self._selected] * self.view.scale
+        y = self.view.origin_y - self._space.ys[self._selected] * self.view.scale
+        dx = (width / 2) - x
+        dy = (height / 2) - y
+        if dx or dy:
+            self.view = pan_view(self.view, dx, dy)
+            self._user_moved = True
+            self.redraw()
+        log_activity("Centered map on the selected point.")
 
     def active_logs(self) -> list[WigleLog]:
         return [entry.log for entry in self.entries if entry.enabled]

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from src.core.blacklist import apply_blacklist
 from src.core.wigle_csv import (
     Observation,
     WigleCsvError,
@@ -32,10 +33,16 @@ class InboxResult:
     marked_done: tuple[Path, ...] = ()
     errors: tuple[str, ...] = ()
     skipped_empty: bool = False
+    excluded_by_blacklist: int = 0
 
     @property
     def did_work(self) -> bool:
-        return bool(self.processed_sources or self.written or self.errors)
+        return bool(
+            self.processed_sources
+            or self.written
+            or self.errors
+            or self.excluded_by_blacklist
+        )
 
 
 def list_pending_csv(raw_dir: str | Path) -> list[Path]:
@@ -129,6 +136,7 @@ def process_inbox(
         all_rows.extend(log.observations)
 
     written: list[Path] = []
+    excluded_total = 0
     if all_rows:
         by_day = group_observations_by_day(tuple(all_rows))
         for day in sorted(by_day):
@@ -146,6 +154,12 @@ def process_inbox(
                         f"Could not merge existing day {day.isoformat()}: {exc}"
                     )
                     continue
+            day_log, excluded = apply_blacklist(day_log)
+            excluded_total += excluded
+            if not day_log.observations:
+                # All rows filtered — leave any existing Combined day files alone.
+                continue
+            if existing:
                 unlink_failed = False
                 for path in existing:
                     try:
@@ -162,7 +176,9 @@ def process_inbox(
                 continue
             written.extend(parts)
 
-    mark_sources = bool(written) or not all_rows
+    mark_sources = bool(written) or not all_rows or (
+        bool(all_rows) and excluded_total > 0 and not written and not errors
+    )
     marked_done: list[Path] = []
     if mark_sources:
         for path, _log in loaded:
@@ -177,24 +193,27 @@ def process_inbox(
         written=tuple(written),
         marked_done=tuple(marked_done),
         errors=tuple(errors),
+        excluded_by_blacklist=excluded_total,
     )
 
 
 def summarize_inbox_result(result: InboxResult) -> str:
     """One-line activity / status summary."""
     if result.skipped_empty and not result.errors:
-        return "Inbox pulse — nothing pending."
+        return "Dropzone pulse — nothing pending."
     parts: list[str] = []
     if result.written:
         names = ", ".join(path.name for path in result.written)
         parts.append(f"wrote {len(result.written)} ({names})")
+    if result.excluded_by_blacklist:
+        parts.append(f"excluded {result.excluded_by_blacklist} by blacklist")
     if result.marked_done:
         parts.append(f"marked {len(result.marked_done)} done")
     if result.errors:
         parts.append(f"{len(result.errors)} error(s)")
     if not parts:
         return (
-            f"Inbox pulse — {result.pending} pending, no output"
+            f"Dropzone pulse — {result.pending} pending, no output"
             + (f" ({result.errors[0]})" if result.errors else ".")
         )
-    return "Inbox: " + "; ".join(parts) + "."
+    return "Dropzone: " + "; ".join(parts) + "."

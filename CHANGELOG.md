@@ -7,13 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-10-01
+
 ### Added
+
+- Settings → **Blacklist** tab: SSID and MAC lists in local `blacklist.xml` (beside `settings.xml`, gitignored). Matching is **case-sensitive** and exact.
+- File → **Combine** / **Clean** / **Clean and Combine**: Clean writes `{basename} CLEAN.csv` only when the blacklist removed rows (zero-hit files skipped; multi-file → folder for hits only). Clean and Combine merges first, then blacklists — always saves the merge; appends ` CLEAN` only when rows were removed.
+- Traditional **menu bar**: File · Automation · View (replaces the crowded button strip). Automation: Process Dropzone · Open Dropzone · Open Cleared. View: Fit map · Center on selection. File: Clear log.
+- Folder labels **Dropzone** (input) / **Cleared** (output) in Settings and Automation.
+- Inbox Cleared writes also strip blacklisted rows.
 
 ### Changed
 
-### Fixed
+- Map **Add / drop** no longer auto-splits oversized files — load as-is for personal history; use **Split CSV** or Dropzone automation for splits.
+- Status line only under the menu (no action buttons in the top strip).
 
 ### Removed
+
+- Toolbar buttons (Add / Combine Clean / Split / Process inbox / Fit / Settings) — moved into menus.
 
 ## [0.0.4] - 2026-10-01
 

@@ -4,11 +4,11 @@
 # Also callable from the Build and Release workflow.
 #
 # Artifact examples:
-#   wardrive-log-visualizer-windows-0.0.4-portable
-#   wardrive-log-visualizer-windows-0.0.4-setup
-#   wardrive-log-visualizer-mac-apple-silicon-0.0.4
-#   wardrive-log-visualizer-mac-intel-0.0.4
-#   wardrive-log-visualizer-ubuntu-0.0.4
+#   wardrive-log-visualizer-windows-0.0.5-portable
+#   wardrive-log-visualizer-windows-0.0.5-setup
+#   wardrive-log-visualizer-mac-apple-silicon-0.0.5
+#   wardrive-log-visualizer-mac-intel-0.0.5
+#   wardrive-log-visualizer-ubuntu-0.0.5
 # =============================================================================
 name: Build
 

@@ -23,7 +23,7 @@ Keep the **repository root** reserved for project metadata only:
 
 Do **not** add application code, build outputs, or virtualenvs at the root.
 
-**Local only (never commit):** `LOCAL_NOTES.md` (private next-work scratchpad), `settings.xml` (API keys and folder paths), `tests/`, `sample/`, `.venv/`, `build/`, `dist/`, `__pycache__/`, IDE folders, secrets (`.env`), real wardrive `.csv` / `.log` captures.
+**Local only (never commit):** `LOCAL_NOTES.md` (private next-work scratchpad), `settings.xml` (API keys and folder paths), `blacklist.xml` (home SSID/MAC lists), `tests/`, `sample/`, `.venv/`, `build/`, `dist/`, `__pycache__/`, IDE folders, secrets (`.env`), real wardrive `.csv` / `.log` captures.
 
 ## Version number (single source of truth)
 
@@ -66,6 +66,7 @@ What should *not* go to GitHub are the paths listed **inside** `.gitignore`, for
 
 - `LOCAL_NOTES.md` (private scratchpad)
 - `settings.xml` (API keys and folder paths)
+- `blacklist.xml` (SSID / MAC privacy list)
 - `tests/` and `sample/` (local only)
 - `.venv/` (local virtual environment)
 - `build/` and `dist/` (PyInstaller outputs)

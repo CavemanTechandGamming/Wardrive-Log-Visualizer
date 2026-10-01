@@ -250,11 +250,14 @@ def write_split_parts(
     log: WigleLog,
     directory: str | Path,
     max_lines: int,
+    *,
+    cleaned: bool = False,
 ) -> tuple[Path, ...]:
     """Write row-cap parts into ``directory`` using locked Wardriving Log names.
 
     Multi-part outputs always get `` Part N``. A single fitting part is written
-    without a part suffix.
+    without a part suffix. When ``cleaned`` is true, `` CLEAN`` is appended
+    after any Part token (e.g. ``… Part 1 CLEAN.csv``).
     """
     parts = split_log(log, max_lines)
     out_dir = Path(directory)
@@ -263,7 +266,9 @@ def write_split_parts(
     multi = len(parts) > 1
     for index, part_log in enumerate(parts, start=1):
         name = default_combined_csv_name(
-            part_log, part=index if multi else None
+            part_log,
+            part=index if multi else None,
+            cleaned=cleaned,
         )
         path = out_dir / name
         write_wigle_csv(path, part_log)
@@ -271,7 +276,12 @@ def write_split_parts(
     return tuple(written)
 
 
-def default_combined_csv_name(log: WigleLog, *, part: int | None = None) -> str:
+def default_combined_csv_name(
+    log: WigleLog,
+    *,
+    part: int | None = None,
+    cleaned: bool = False,
+) -> str:
     """Suggest a Save As basename from the earliest and latest FirstSeen.
 
     One calendar day::
@@ -285,6 +295,11 @@ def default_combined_csv_name(log: WigleLog, *, part: int | None = None) -> str:
     Row-cap split parts (optional ``part``)::
 
         Wardriving Log September 30th 2026 Part 1.csv
+
+    Cleaned File → Clean / Clean and Combine (optional ``cleaned``)::
+
+        Wardriving Log September 30th 2026 CLEAN.csv
+        Wardriving Log September 30th 2026 Part 1 CLEAN.csv
 
     Uses min and max ``FirstSeen`` among every row in the log (string order
     matches chronological order for ``YYYY-MM-DD HH:MM:SS``).
@@ -303,7 +318,18 @@ def default_combined_csv_name(log: WigleLog, *, part: int | None = None) -> str:
         if part < 1:
             raise WigleCsvError("Part number must be 1 or greater.")
         base = f"{base} Part {part}"
+    if cleaned:
+        base = f"{base} CLEAN"
     return f"{base}.csv"
+
+
+def cleaned_input_csv_name(source_name: str) -> str:
+    """Append `` CLEAN`` before ``.csv`` for File → Clean single-input saves."""
+    path = Path(source_name)
+    stem = path.stem
+    if stem.endswith(" CLEAN"):
+        return f"{stem}.csv"
+    return f"{stem} CLEAN.csv"
 
 
 @dataclass(frozen=True)
