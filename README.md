@@ -22,17 +22,18 @@ Desktop tool to **ingest wardrive logs**, **merge them into one combined log**, 
 - **Save combined CSV** with a suggested name from the earliest and latest FirstSeen (`Wardriving Log September 30th 2026.csv`, or a start–end span across calendar days)
 - **Row-cap split** — **Split CSV** or auto-split on Add/drop when a file would exceed the Settings line cap (default 100,000 lines including meta + header); **Save combined** writes `Part N` files when over the same cap
 - **Unique vs samples** on the legend, file list, and status (unique = distinct MAC+Type; samples = every row)
-- **Settings** (General · WiGLE · WDGWars · About) for API keys, raw/combined folders, max lines per split part, and open/clear the activity log — stored in local `settings.xml`
+- **Settings** (General · WiGLE · WDGWars · About) for API keys, raw/combined folders, max lines per split part, inbox pulse `HH:MM:SS`, and open/clear the activity log — stored in local `settings.xml`
+- **Batch inbox** — pulse Raw → Combined by FirstSeen day; rename finished sources to `.csv.done`; same-day re-drops merge into the existing Combined day file; **Process inbox** for an immediate pass
 - **Activity log** — plain-English `logs/activity.log` beside the app install
-- **Planned:** batch inbox (Raw → Combined) and upload to **WiGLE** / **WDGWars** (keys already live in Settings)
+- **Planned:** upload to **WiGLE** / **WDGWars** (keys already live in Settings)
 
-Alpha `0.0.3` — run from source until a GitHub Release is published (packaging scripts and Actions are in the repo).
+Alpha `0.0.4` — run from source until a GitHub Release is published (packaging scripts and Actions are in the repo).
 
 ---
 
 ## Download
 
-Releases are not published yet (alpha `0.0.3`). When they exist:
+Releases are not published yet (alpha `0.0.4`). When they exist:
 
 1. Open this repository’s **[Releases](https://github.com/CavemanTechandGamming/Wardrive-Log-Visualizer/releases)** page.
 2. Download the file for your OS:
@@ -53,7 +54,7 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 3. **Scroll** to zoom toward the cursor. **Drag** to move the map. **Click** a point to read its fields. **Previous**, **Next**, or the arrow keys move through the visible log. **Fit** frames every point again. Click a type in the legend (**WIFI**, **BLE**, **LTE**, **NR**) to hide or show it — gray means off.
 4. **Save combined CSV** when you want a file WiGLE or WDGWars can take. Rename in the dialog if you want. If the combined log is over the line cap, the app asks for a folder and writes `Part N` files instead.
 5. **Split CSV** splits the active combined log (or a chosen file) by the same Settings line cap.
-6. **Settings** holds keys, folders, max lines per split part, and open/clear for the activity log.
+6. **Settings** holds keys, folders, max lines per split part, inbox pulse interval (`HH:MM:SS`), and open/clear for the activity log. Set Raw + Combined folders to enable the inbox pulse; use **Process inbox** to run one pass immediately.
 
 ---
 
@@ -65,6 +66,7 @@ Until then, run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 - If a file fails to parse, the status line names it. The logs that loaded stay on the map.
 - Drag-and-drop needs `tkinterdnd2` (installed by `scripts/setup_env`). **Add logs** works without it.
 - Local files next to the app (not on GitHub): `settings.xml`, `logs/activity.log`.
+- Inbox only picks up top-level Raw `*.csv` files. After a successful pass, sources become `*.csv.done` and are left alone. Combined outputs for the same calendar day are merged on later passes.
 
 ---
 

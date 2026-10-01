@@ -24,7 +24,7 @@ import io
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 # Column header line for WiGLE CSV 1.6 (after the WigleWifi-1.6 meta row).
@@ -338,6 +338,12 @@ def counts_by_type(
 def _pretty_capture_day(when: datetime) -> str:
     """Month DayOrdinal Year — no weekday (locked output naming 2026-10-01)."""
     return f"{when.strftime('%B')} {_ordinal_day(when.day)} {when.year}"
+
+
+def wardriving_day_stem(day: date) -> str:
+    """Basename without ``.csv`` for one calendar day's combined output."""
+    when = datetime(day.year, day.month, day.day)
+    return f"Wardriving Log {_pretty_capture_day(when)}"
 
 
 def _ordinal_day(day: int) -> str:

@@ -6,11 +6,11 @@
 # Bump that value before running this workflow.
 #
 # Release assets:
-#   WardriveLogVisualizer-0.0.3-windows-portable.zip
-#   WardriveLogVisualizer-0.0.3-windows-setup.exe
-#   WardriveLogVisualizer-0.0.3-mac-apple-silicon.tar.gz
-#   WardriveLogVisualizer-0.0.3-mac-intel.tar.gz
-#   WardriveLogVisualizer-0.0.3-ubuntu.tar.gz
+#   WardriveLogVisualizer-0.0.4-windows-portable.zip
+#   WardriveLogVisualizer-0.0.4-windows-setup.exe
+#   WardriveLogVisualizer-0.0.4-mac-apple-silicon.tar.gz
+#   WardriveLogVisualizer-0.0.4-mac-intel.tar.gz
+#   WardriveLogVisualizer-0.0.4-ubuntu.tar.gz
 # =============================================================================
 name: Build and Release
 

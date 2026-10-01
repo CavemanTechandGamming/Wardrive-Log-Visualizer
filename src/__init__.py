@@ -4,7 +4,7 @@
 Bump it here; the UI and packaging scripts should read from this value.
 """
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 # Locked display name 2026-09-30 (wardrive = one word).
 APP_NAME = "Wardrive Log Visualizer"

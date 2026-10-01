@@ -12,6 +12,7 @@ import customtkinter as ctk
 
 from src import APP_NAME, __version__
 from src.core.activity_log import log_activity
+from src.core.inbox import process_inbox, summarize_inbox_result
 from src.core.plot import (
     MapSpace,
     MapView,
@@ -85,6 +86,8 @@ class MapApp:
         self.settings = load_settings()
         self._settings_window: SettingsWindow | None = None
         self._tk_icon = None
+        self._inbox_after_id: str | None = None
+        self._inbox_busy = False
 
         root.title(f"{APP_NAME} {__version__}")
         root.geometry("1200x700")
@@ -102,6 +105,9 @@ class MapApp:
         ctk.CTkButton(bar, text="Split CSV", command=self.split_csv).pack(
             side="left", padx=(8, 0)
         )
+        ctk.CTkButton(
+            bar, text="Process inbox", command=self.process_inbox_now
+        ).pack(side="left", padx=(8, 0))
         ctk.CTkButton(bar, text="Fit", command=self.fit).pack(side="left", padx=(8, 0))
         ctk.CTkButton(bar, text="Settings", command=self.open_settings).pack(
             side="left", padx=(8, 0)
@@ -212,6 +218,7 @@ class MapApp:
         self._last_size = (0, 0)
         self._wheel_bound = False
         log_activity(f"Started {APP_NAME} {__version__}.")
+        self._schedule_inbox_pulse(initial_delay_ms=2_000)
 
     def _asset_path(self, *parts: str) -> Path:
         """Resolve an asset under ``assets/`` (dev) or PyInstaller ``_MEIPASS``."""
@@ -264,9 +271,69 @@ class MapApp:
         def _closed(_event: object = None) -> None:
             self.settings = load_settings()
             self._settings_window = None
+            self._schedule_inbox_pulse(initial_delay_ms=500)
 
         window.bind("<Destroy>", _closed)
         self._settings_window = window
+
+    def _schedule_inbox_pulse(self, *, initial_delay_ms: int | None = None) -> None:
+        if self._inbox_after_id is not None:
+            try:
+                self.root.after_cancel(self._inbox_after_id)
+            except Exception:
+                pass
+            self._inbox_after_id = None
+        delay = (
+            initial_delay_ms
+            if initial_delay_ms is not None
+            else max(1, self.settings.inbox_pulse_seconds) * 1_000
+        )
+        self._inbox_after_id = self.root.after(delay, self._inbox_pulse_tick)
+
+    def _inbox_pulse_tick(self) -> None:
+        self._inbox_after_id = None
+        self._run_inbox(silent=True)
+        self._schedule_inbox_pulse()
+
+    def process_inbox_now(self) -> None:
+        self._run_inbox(silent=False)
+
+    def _run_inbox(self, *, silent: bool) -> None:
+        if self._inbox_busy:
+            return
+        raw = self.settings.raw_logs_folder.strip()
+        combined = self.settings.combined_logs_folder.strip()
+        if not raw or not combined:
+            if not silent:
+                self.status.configure(
+                    text="Set Raw and Combined folders in Settings before inbox."
+                )
+                log_activity("Inbox — folders not set.")
+            return
+        raw_path = Path(raw)
+        if not raw_path.is_dir():
+            if not silent:
+                message = f"Raw folder missing: {raw}"
+                self.status.configure(text=message)
+                log_activity(message)
+            return
+        self._inbox_busy = True
+        try:
+            result = process_inbox(
+                raw_path,
+                combined,
+                self.settings.max_lines_per_part,
+            )
+        finally:
+            self._inbox_busy = False
+        if silent and result.skipped_empty and not result.errors:
+            return
+        summary = summarize_inbox_result(result)
+        for error in result.errors:
+            log_activity(error)
+        log_activity(summary)
+        if result.written or result.errors or not silent:
+            self.status.configure(text=summary)
 
     def add_files(self) -> None:
         selected = filedialog.askopenfilenames(

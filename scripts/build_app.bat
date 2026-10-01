@@ -5,8 +5,8 @@ REM  build_app.bat - Windows portable (onefile) + real Setup.exe (Inno Setup)
 REM  Version comes from src\__init__.py (single source of truth).
 REM
 REM  Outputs (example):
-REM    dist\windows\0.0.3\portable\WardriveLogVisualizer-0.0.3.exe
-REM    dist\windows\0.0.3\setup\WardriveLogVisualizer-0.0.3-windows-setup.exe
+REM    dist\windows\0.0.4\portable\WardriveLogVisualizer-0.0.4.exe
+REM    dist\windows\0.0.4\setup\WardriveLogVisualizer-0.0.4-windows-setup.exe
 REM ----------------------------------------------------------------------------
 
 cd /d "%~dp0.."

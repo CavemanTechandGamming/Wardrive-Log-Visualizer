@@ -15,8 +15,13 @@ from src.core.activity_log import (
 )
 from src.core.settings import (
     AppSettings,
+    DEFAULT_INBOX_PULSE_SECONDS,
+    MAX_INBOX_PULSE_SECONDS,
+    MIN_INBOX_PULSE_SECONDS,
     clamp_max_lines_per_part,
+    format_hhmmss,
     load_settings,
+    parse_hhmmss,
     save_settings,
     settings_path,
 )
@@ -37,8 +42,8 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master: ctk.CTk) -> None:
         super().__init__(master)
         self.title("Settings")
-        self.geometry("640x560")
-        self.minsize(560, 500)
+        self.geometry("640x640")
+        self.minsize(560, 560)
         self.transient(master)
         self.grab_set()
 
@@ -117,12 +122,40 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(tab, text="Combined logs folder", anchor="w").pack(fill="x")
         out_row = ctk.CTkFrame(tab, fg_color="transparent")
-        out_row.pack(fill="x", pady=(0, 12))
+        out_row.pack(fill="x", pady=(0, 8))
         self.combined_folder = ctk.CTkEntry(out_row)
         self.combined_folder.pack(side="left", fill="x", expand=True)
         self.combined_folder.insert(0, self._settings.combined_logs_folder)
         ctk.CTkButton(
             out_row, text="Browse", width=80, command=self._browse_combined
+        ).pack(side="left", padx=(8, 0))
+
+        ctk.CTkLabel(tab, text="Inbox pulse interval", anchor="w").pack(fill="x")
+        ctk.CTkLabel(
+            tab,
+            text=(
+                "How often the app checks Raw for new .csv files "
+                f"(format HH:MM:SS). Default {format_hhmmss(DEFAULT_INBOX_PULSE_SECONDS)}; "
+                f"min {format_hhmmss(MIN_INBOX_PULSE_SECONDS)}; "
+                f"max {format_hhmmss(MAX_INBOX_PULSE_SECONDS)}. "
+                "Processed sources are renamed to .csv.done."
+            ),
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
+            wraplength=560,
+        ).pack(fill="x", pady=(0, 4))
+        pulse_row = ctk.CTkFrame(tab, fg_color="transparent")
+        pulse_row.pack(fill="x", pady=(0, 12))
+        self.pulse_entry = ctk.CTkEntry(pulse_row, width=100)
+        self.pulse_entry.pack(side="left")
+        self.pulse_entry.insert(
+            0, format_hhmmss(self._settings.inbox_pulse_seconds)
+        )
+        ctk.CTkLabel(
+            pulse_row,
+            text="HH:MM:SS",
+            anchor="w",
+            text_color=("#6a6a6a", "#8a8a8a"),
         ).pack(side="left", padx=(8, 0))
 
         ctk.CTkLabel(tab, text="Max lines per split part", anchor="w").pack(
@@ -321,6 +354,11 @@ class SettingsWindow(ctk.CTkToplevel):
                 parent=self,
             )
             return
+        try:
+            pulse_seconds = parse_hhmmss(self.pulse_entry.get())
+        except ValueError as exc:
+            messagebox.showerror("Settings", str(exc), parent=self)
+            return
         settings = AppSettings(
             wigle_api_name=self.wigle_name.get().strip(),
             wigle_api_token=self.wigle_token.get().strip(),
@@ -328,6 +366,7 @@ class SettingsWindow(ctk.CTkToplevel):
             raw_logs_folder=self.raw_folder.get().strip(),
             combined_logs_folder=self.combined_folder.get().strip(),
             max_lines_per_part=max_lines,
+            inbox_pulse_seconds=pulse_seconds,
         )
         try:
             save_settings(settings)
@@ -340,6 +379,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return
         # Never put key/token values into the activity log.
         log_activity(
-            f"Saved settings.xml (max lines per part: {max_lines:,})."
+            f"Saved settings.xml (max lines per part: {max_lines:,}; "
+            f"inbox pulse: {format_hhmmss(pulse_seconds)})."
         )
         self.destroy()

@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.0.4] - 2026-10-01
+
+### Added
+
+- **Batch inbox** (Raw → Combined): a silent pulse checks the Raw folder for new `.csv` files, combines them by **FirstSeen** calendar day, applies the row-cap split when needed, and renames finished sources to `.csv.done` (ignore by extension only — not by filename). Later drops on the **same day** merge into the existing Combined day file(s) and rewrite one clean set.
+- Settings → General: **inbox pulse interval** as `HH:MM:SS` (default `00:01:00`; minimum `00:00:10`; maximum `01:00:00`).
+- **Process inbox** toolbar button for an immediate pass (same logic as the pulse).
+
 ## [0.0.3] - 2026-10-01
 
 ### Added
